@@ -85,6 +85,24 @@ export const lockedBalancesAtom = atom((get) => {
   return result;
 });
 
+/**
+ * 对账辅助：按资产统计总余额（free + locked）
+ * 仅用于审计展示，不影响现有业务流程
+ */
+export const accountReconciliationAtom = atom((get) => {
+  const account = get(accountAtom);
+  const totals: Record<string, string> = {};
+
+  for (const [asset, balance] of Object.entries(account.balances)) {
+    totals[asset] = new Decimal(balance.free).plus(balance.locked).toFixed(8);
+  }
+
+  return {
+    totals,
+    updateTime: account.updateTime,
+  };
+});
+
 // ==================== 余额操作 Actions ====================
 
 /**

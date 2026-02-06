@@ -362,6 +362,14 @@ export class MatchingEngine {
   }
 
   /**
+   * 预估下一笔订单 ID
+   * 仅用于前端审计链路绑定，不影响撮合逻辑
+   */
+  peekNextOrderId(): number {
+    return this.orderIdCounter;
+  }
+
+  /**
    * 获取订单历史
    */
   getOrderHistory(limit = 100): Order[] {

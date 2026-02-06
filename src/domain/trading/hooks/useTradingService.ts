@@ -5,43 +5,40 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
+import Decimal from 'decimal.js';
 import { orderBookAtom } from '@/features/orderbook/atoms/orderBookAtom';
 import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
 import { tickerAtom } from '@/features/ticker/atoms/tickerAtom';
 import { matchingEngine } from '@/domain/trading/engine';
-import { 
-  lockBalanceAtom, 
-  unlockBalanceAtom, 
+import {
+  lockBalanceAtom,
+  unlockBalanceAtom,
   executeTradeAtom,
   availableBalancesAtom,
 } from '@/domain/account';
+import {
+  appendLifecycleEventAtom,
+  appendLedgerJournalAtom,
+  buildFeeJournal,
+  buildLockJournal,
+  buildTradeSettleJournal,
+  buildUnlockJournal,
+} from '@/domain/exchange';
 import type { NewOrderRequest, Order, OrderResponse, OrderSide, OrderType } from '@/domain/trading/types';
-import Decimal from 'decimal.js';
+import type { LifecycleStage } from '@/domain/exchange';
 
-/**
- * 交易服务返回类型
- */
 interface TradingServiceReturn {
-  // 下单
   submitOrder: (params: SubmitOrderParams) => OrderResponse;
-  // 取消订单
   cancelOrder: (orderId: number) => OrderResponse;
-  // 查询
   getActiveOrders: () => Order[];
   getOrderHistory: () => Order[];
-  // 余额
   availableBalances: Record<string, string>;
-  // 当前交易对信息
   currentSymbol: string;
   baseAsset: string;
   quoteAsset: string;
-  // 当前价格
   currentPrice: string;
 }
 
-/**
- * 下单参数
- */
 interface SubmitOrderParams {
   side: OrderSide;
   type: OrderType;
@@ -50,128 +47,336 @@ interface SubmitOrderParams {
   stopPrice?: string;
 }
 
-/**
- * 交易服务 Hook
- */
+function createFlowId(orderIdHint: number): string {
+  return `flow_${orderIdHint}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function useTradingService(): TradingServiceReturn {
   const orderBook = useAtomValue(orderBookAtom);
   const symbolConfig = useAtomValue(symbolConfigAtom);
   const ticker = useAtomValue(tickerAtom);
   const availableBalances = useAtomValue(availableBalancesAtom);
-  
+
   const lockBalance = useSetAtom(lockBalanceAtom);
   const unlockBalance = useSetAtom(unlockBalanceAtom);
   const executeTrade = useSetAtom(executeTradeAtom);
 
+  const appendLifecycleEvent = useSetAtom(appendLifecycleEventAtom);
+  const appendLedgerJournal = useSetAtom(appendLedgerJournalAtom);
+
   const currentPrice = ticker?.lastPrice || '0';
-  
-  // 防止止损检查重复触发
+
+  const flowByOrderIdRef = useRef<Map<number, string>>(new Map());
+  const processedTradeIdsRef = useRef<Set<number>>(new Set());
   const lastCheckPriceRef = useRef<string>('');
 
-  /**
-   * 止损单触发检查
-   * 在价格变化时自动检查是否有止损单需要触发
-   */
+  const ensureFlowId = useCallback((orderId: number, fallback?: string): string => {
+    const existing = flowByOrderIdRef.current.get(orderId);
+    if (existing) return existing;
+
+    const next = fallback || createFlowId(orderId);
+    flowByOrderIdRef.current.set(orderId, next);
+    return next;
+  }, []);
+
+  const pushLifecycle = useCallback((params: {
+    flowId: string;
+    orderId: number;
+    side: OrderSide;
+    stage: LifecycleStage;
+    payload?: Record<string, unknown>;
+    symbol?: string;
+  }) => {
+    appendLifecycleEvent({
+      flowId: params.flowId,
+      orderId: params.orderId,
+      symbol: params.symbol || symbolConfig.symbol,
+      side: params.side,
+      stage: params.stage,
+      payload: params.payload,
+    });
+  }, [appendLifecycleEvent, symbolConfig.symbol]);
+
+  const pushJournal = useCallback((journalBuilder: () => ReturnType<typeof buildLockJournal> | null) => {
+    const journal = journalBuilder();
+    if (!journal) return;
+
+    try {
+      appendLedgerJournal(journal);
+    } catch (error) {
+      console.error('[TradingService] Ledger journal rejected:', error);
+    }
+  }, [appendLedgerJournal]);
+
+  const logOrderStatusStage = useCallback((order: Order, flowId: string) => {
+    if (order.status === 'NEW') {
+      pushLifecycle({ flowId, orderId: order.orderId, side: order.side, stage: 'ORDER_ACCEPTED', symbol: order.symbol });
+    } else if (order.status === 'PARTIALLY_FILLED') {
+      pushLifecycle({ flowId, orderId: order.orderId, side: order.side, stage: 'ORDER_PARTIALLY_FILLED', symbol: order.symbol });
+    } else if (order.status === 'FILLED') {
+      pushLifecycle({ flowId, orderId: order.orderId, side: order.side, stage: 'ORDER_FILLED', symbol: order.symbol });
+    } else if (order.status === 'CANCELED') {
+      pushLifecycle({ flowId, orderId: order.orderId, side: order.side, stage: 'ORDER_CANCELED', symbol: order.symbol });
+    } else if (order.status === 'REJECTED') {
+      pushLifecycle({
+        flowId,
+        orderId: order.orderId,
+        side: order.side,
+        stage: 'ORDER_REJECTED',
+        symbol: order.symbol,
+        payload: { rejectReason: order.rejectReason || 'UNKNOWN' },
+      });
+    }
+  }, [pushLifecycle]);
+
+  const settleFill = useCallback((params: {
+    flowId: string;
+    order: Order;
+    fill: Order['fills'][number];
+  }) => {
+    const { flowId, order, fill } = params;
+
+    if (processedTradeIdsRef.current.has(fill.tradeId)) {
+      return;
+    }
+    processedTradeIdsRef.current.add(fill.tradeId);
+
+    const quoteAmount = new Decimal(fill.quantity).times(new Decimal(fill.price)).toFixed(8);
+
+    executeTrade({
+      baseAsset: symbolConfig.baseAsset,
+      quoteAsset: symbolConfig.quoteAsset,
+      side: order.side,
+      baseAmount: fill.quantity,
+      quoteAmount,
+      commission: fill.commission,
+      commissionAsset: fill.commissionAsset,
+    });
+
+    pushLifecycle({
+      flowId,
+      orderId: order.orderId,
+      side: order.side,
+      symbol: order.symbol,
+      stage: 'TRADE_SETTLED',
+      payload: {
+        tradeId: fill.tradeId,
+        price: fill.price,
+        quantity: fill.quantity,
+        commission: fill.commission,
+        commissionAsset: fill.commissionAsset,
+      },
+    });
+
+    pushJournal(() => buildTradeSettleJournal(
+      {
+        flowId,
+        orderId: order.orderId,
+        symbol: order.symbol,
+        side: order.side,
+      },
+      {
+        baseAsset: symbolConfig.baseAsset,
+        quoteAsset: symbolConfig.quoteAsset,
+        baseAmount: fill.quantity,
+        quoteAmount,
+        tradeId: fill.tradeId,
+      }
+    ));
+
+    pushLifecycle({
+      flowId,
+      orderId: order.orderId,
+      side: order.side,
+      symbol: order.symbol,
+      stage: 'LEDGER_POSTED',
+      payload: {
+        kind: 'TRADE_SETTLE',
+        tradeId: fill.tradeId,
+      },
+    });
+
+    const feeJournal = buildFeeJournal(
+      {
+        flowId,
+        orderId: order.orderId,
+        symbol: order.symbol,
+        side: order.side,
+      },
+      {
+        commissionAsset: fill.commissionAsset,
+        commission: fill.commission,
+        tradeId: fill.tradeId,
+      }
+    );
+
+    if (feeJournal) {
+      pushJournal(() => feeJournal);
+      pushLifecycle({
+        flowId,
+        orderId: order.orderId,
+        side: order.side,
+        symbol: order.symbol,
+        stage: 'LEDGER_POSTED',
+        payload: {
+          kind: 'FEE',
+          tradeId: fill.tradeId,
+        },
+      });
+    }
+  }, [executeTrade, pushJournal, pushLifecycle, symbolConfig.baseAsset, symbolConfig.quoteAsset]);
+
+  const unlockAndRecord = useCallback((params: {
+    flowId: string;
+    orderId: number;
+    side: OrderSide;
+    symbol: string;
+    asset: string;
+    amount: string;
+  }) => {
+    const unlockAmount = new Decimal(params.amount || '0');
+    if (unlockAmount.lte(0)) return;
+
+    unlockBalance({ asset: params.asset, amount: unlockAmount.toFixed(8) });
+
+    pushLifecycle({
+      flowId: params.flowId,
+      orderId: params.orderId,
+      side: params.side,
+      symbol: params.symbol,
+      stage: 'FUNDS_UNLOCKED',
+      payload: { asset: params.asset, amount: unlockAmount.toFixed(8) },
+    });
+
+    pushJournal(() => buildUnlockJournal(
+      {
+        flowId: params.flowId,
+        orderId: params.orderId,
+        symbol: params.symbol,
+        side: params.side,
+      },
+      {
+        asset: params.asset,
+        amount: unlockAmount.toFixed(8),
+      }
+    ));
+
+    pushLifecycle({
+      flowId: params.flowId,
+      orderId: params.orderId,
+      side: params.side,
+      symbol: params.symbol,
+      stage: 'LEDGER_POSTED',
+      payload: {
+        kind: 'UNLOCK',
+        asset: params.asset,
+        amount: unlockAmount.toFixed(8),
+      },
+    });
+  }, [pushJournal, pushLifecycle, unlockBalance]);
+
   useEffect(() => {
-    // 跳过无效价格
     if (!currentPrice || currentPrice === '0') return;
-    
-    // 跳过相同价格
     if (currentPrice === lastCheckPriceRef.current) return;
     lastCheckPriceRef.current = currentPrice;
 
-    // 获取订单簿数据
     const orderBookData = {
       bids: orderBook.bids,
       asks: orderBook.asks,
     };
 
-    // 检查止损单
     const triggeredOrders = matchingEngine.checkStopOrders(currentPrice, orderBookData);
-
-    // 处理触发的止损单成交
     if (triggeredOrders.length > 0) {
       for (const order of triggeredOrders) {
-        console.log(`[TradingService] Stop order triggered:`, order.orderId, order.status);
-        
-        // 处理成交
-        if (order.fills && order.fills.length > 0) {
-          for (const fill of order.fills) {
-            executeTrade({
-              baseAsset: symbolConfig.baseAsset,
-              quoteAsset: symbolConfig.quoteAsset,
-              side: order.side,
-              baseAmount: fill.quantity,
-              quoteAmount: new Decimal(fill.quantity).times(new Decimal(fill.price)).toFixed(8),
-              commission: fill.commission,
-              commissionAsset: fill.commissionAsset,
-            });
-          }
+        const flowId = ensureFlowId(order.orderId);
+        pushLifecycle({
+          flowId,
+          orderId: order.orderId,
+          side: order.side,
+          symbol: order.symbol,
+          stage: 'ORDER_TRIGGERED',
+          payload: { currentPrice },
+        });
+
+        for (const fill of order.fills) {
+          settleFill({ flowId, order, fill });
         }
+
+        logOrderStatusStage(order, flowId);
       }
     }
 
-    // 检查限价单（新增）
     const matchedLimitOrders = matchingEngine.checkLimitOrders(orderBookData);
-
     if (matchedLimitOrders.length > 0) {
       for (const { order, newFills } of matchedLimitOrders) {
-        console.log(`[TradingService] Limit order matched:`, order.orderId, order.status);
+        const flowId = ensureFlowId(order.orderId);
 
-        // 1. 执行新成交的资金划转
-        if (newFills.length > 0) {
-          for (const fill of newFills) {
-            executeTrade({
-              baseAsset: symbolConfig.baseAsset,
-              quoteAsset: symbolConfig.quoteAsset,
-              side: order.side,
-              baseAmount: fill.quantity,
-              quoteAmount: new Decimal(fill.quantity).times(new Decimal(fill.price)).toFixed(8),
-              commission: fill.commission,
-              commissionAsset: fill.commissionAsset,
-            });
-          }
+        for (const fill of newFills) {
+          settleFill({ flowId, order, fill });
         }
 
-        // 2. 如果订单完全成交，清理剩余冻结资金（主要是买单的滑点保护/价格优化部分）
+        logOrderStatusStage(order, flowId);
+
         if (order.status === 'FILLED') {
-           let lockAsset: string;
-           let initialLockAmount: string;
+          let lockAsset: string;
+          let initialLockAmount: Decimal;
 
-           if (order.side === 'BUY') {
-             lockAsset = symbolConfig.quoteAsset;
-             // 重新计算当初的冻结金额: qty * price * 1.001
-             initialLockAmount = new Decimal(order.origQty)
-               .times(new Decimal(order.price))
-               .times(1.001)
-               .toFixed(8);
-           } else {
-             lockAsset = symbolConfig.baseAsset;
-             initialLockAmount = order.origQty;
-           }
+          if (order.side === 'BUY') {
+            lockAsset = symbolConfig.quoteAsset;
+            initialLockAmount = new Decimal(order.origQty).times(order.price).times(1.001);
+          } else {
+            lockAsset = symbolConfig.baseAsset;
+            initialLockAmount = new Decimal(order.origQty);
+          }
 
-           const usedAmount = order.side === 'BUY' 
-             ? order.cummulativeQuoteQty 
-             : order.executedQty;
+          const usedAmount = order.side === 'BUY'
+            ? new Decimal(order.cummulativeQuoteQty)
+            : new Decimal(order.executedQty);
+          const remainingLock = initialLockAmount.minus(usedAmount);
 
-           const remainingLock = new Decimal(initialLockAmount).minus(new Decimal(usedAmount));
-
-           if (remainingLock.gt(0)) {
-             console.log(`[TradingService] Unlocking remaining balance for order ${order.orderId}: ${remainingLock.toFixed(8)} ${lockAsset}`);
-             unlockBalance({ asset: lockAsset, amount: remainingLock.toFixed(8) });
-           }
+          unlockAndRecord({
+            flowId,
+            orderId: order.orderId,
+            side: order.side,
+            symbol: order.symbol,
+            asset: lockAsset,
+            amount: remainingLock.toFixed(8),
+          });
         }
       }
     }
-  }, [currentPrice, orderBook, symbolConfig, executeTrade, unlockBalance]);
+  }, [
+    currentPrice,
+    ensureFlowId,
+    logOrderStatusStage,
+    orderBook,
+    settleFill,
+    symbolConfig.baseAsset,
+    symbolConfig.quoteAsset,
+    unlockAndRecord,
+    pushLifecycle,
+  ]);
 
-  /**
-   * 提交订单
-   */
   const submitOrder = useCallback((params: SubmitOrderParams): OrderResponse => {
     const { side, type, quantity, price, stopPrice } = params;
-    
-    // 构造订单请求
+
+    const predictedOrderId = matchingEngine.peekNextOrderId();
+    const flowId = createFlowId(predictedOrderId);
+
+    pushLifecycle({
+      flowId,
+      orderId: predictedOrderId,
+      side,
+      symbol: symbolConfig.symbol,
+      stage: 'ORDER_SUBMIT_REQUESTED',
+      payload: {
+        type,
+        quantity,
+        price: price || null,
+        stopPrice: stopPrice || null,
+      },
+    });
+
     const request: NewOrderRequest = {
       symbol: symbolConfig.symbol,
       side,
@@ -182,25 +387,33 @@ export function useTradingService(): TradingServiceReturn {
       timeInForce: type === 'MARKET' ? 'IOC' : 'GTC',
     };
 
-    // 计算需要冻结的资产和金额
     let lockAsset: string;
     let lockAmount: string;
 
     if (side === 'BUY') {
-      // 买入：冻结报价资产
       lockAsset = symbolConfig.quoteAsset;
       const qty = new Decimal(quantity);
-      const orderPrice = price ? new Decimal(price) : new Decimal(currentPrice);
-      lockAmount = qty.times(orderPrice).times(1.001).toFixed(8); // 多冻结 0.1% 作为手续费预留
+      const orderPrice = price ? new Decimal(price) : new Decimal(currentPrice || '0');
+      lockAmount = qty.times(orderPrice).times(1.001).toFixed(8);
     } else {
-      // 卖出：冻结基础资产
       lockAsset = symbolConfig.baseAsset;
       lockAmount = quantity;
     }
 
-    // 检查并冻结余额
     const currentBalance = availableBalances[lockAsset] || '0';
     if (new Decimal(lockAmount).gt(new Decimal(currentBalance))) {
+      pushLifecycle({
+        flowId,
+        orderId: predictedOrderId,
+        side,
+        symbol: symbolConfig.symbol,
+        stage: 'ORDER_REJECTED',
+        payload: {
+          code: 'INSUFFICIENT_BALANCE',
+          message: `${lockAsset} 余额不足`,
+        },
+      });
+
       return {
         success: false,
         error: {
@@ -211,10 +424,65 @@ export function useTradingService(): TradingServiceReturn {
       };
     }
 
-    // 冻结余额
-    lockBalance({ asset: lockAsset, amount: lockAmount });
+    const lockOk = lockBalance({ asset: lockAsset, amount: lockAmount });
+    if (!lockOk) {
+      pushLifecycle({
+        flowId,
+        orderId: predictedOrderId,
+        side,
+        symbol: symbolConfig.symbol,
+        stage: 'ORDER_REJECTED',
+        payload: {
+          code: 'LOCK_FAILED',
+          message: `${lockAsset} 冻结失败`,
+        },
+      });
 
-    // 执行撮合
+      return {
+        success: false,
+        error: {
+          code: 'LOCK_FAILED',
+          message: `${lockAsset} 冻结失败`,
+          reason: 'INSUFFICIENT_BALANCE',
+        },
+      };
+    }
+
+    pushLifecycle({
+      flowId,
+      orderId: predictedOrderId,
+      side,
+      symbol: symbolConfig.symbol,
+      stage: 'FUNDS_LOCKED',
+      payload: { asset: lockAsset, amount: lockAmount },
+    });
+
+    pushJournal(() => buildLockJournal(
+      {
+        flowId,
+        orderId: predictedOrderId,
+        symbol: symbolConfig.symbol,
+        side,
+      },
+      {
+        asset: lockAsset,
+        amount: lockAmount,
+      }
+    ));
+
+    pushLifecycle({
+      flowId,
+      orderId: predictedOrderId,
+      side,
+      symbol: symbolConfig.symbol,
+      stage: 'LEDGER_POSTED',
+      payload: {
+        kind: 'LOCK',
+        asset: lockAsset,
+        amount: lockAmount,
+      },
+    });
+
     const orderBookData = {
       bids: orderBook.bids,
       asks: orderBook.asks,
@@ -223,51 +491,84 @@ export function useTradingService(): TradingServiceReturn {
     const response = matchingEngine.submitOrder(request, orderBookData, currentBalance);
 
     if (!response.success || !response.order) {
-      // 失败：解冻余额
-      unlockBalance({ asset: lockAsset, amount: lockAmount });
+      pushLifecycle({
+        flowId,
+        orderId: predictedOrderId,
+        side,
+        symbol: symbolConfig.symbol,
+        stage: 'ORDER_REJECTED',
+        payload: {
+          code: response.error?.code || 'VALIDATION_FAILED',
+          message: response.error?.message || '订单校验失败',
+          reason: response.error?.reason || 'UNKNOWN',
+        },
+      });
+
+      unlockAndRecord({
+        flowId,
+        orderId: predictedOrderId,
+        side,
+        symbol: symbolConfig.symbol,
+        asset: lockAsset,
+        amount: lockAmount,
+      });
+
       return response;
     }
 
     const order = response.order;
+    ensureFlowId(order.orderId, flowId);
 
-    // 处理成交
-    if (order.fills.length > 0) {
-      for (const fill of order.fills) {
-        executeTrade({
-          baseAsset: symbolConfig.baseAsset,
-          quoteAsset: symbolConfig.quoteAsset,
-          side,
-          baseAmount: fill.quantity,
-          quoteAmount: new Decimal(fill.quantity).times(new Decimal(fill.price)).toFixed(8),
-          commission: fill.commission,
-          commissionAsset: fill.commissionAsset,
-        });
-      }
+    pushLifecycle({
+      flowId,
+      orderId: order.orderId,
+      side,
+      symbol: order.symbol,
+      stage: 'ORDER_VALIDATED',
+    });
+
+    logOrderStatusStage(order, flowId);
+
+    for (const fill of order.fills) {
+      settleFill({ flowId, order, fill });
     }
 
-    // 如果订单完全成交或被拒绝，解冻剩余
     if (order.status === 'FILLED' || order.status === 'REJECTED' || order.status === 'CANCELED') {
-      // 计算未使用的冻结金额
       const usedAmount = side === 'BUY'
-        ? order.cummulativeQuoteQty
-        : order.executedQty;
-      const remainingLock = new Decimal(lockAmount).minus(new Decimal(usedAmount));
-      
-      if (remainingLock.gt(0)) {
-        unlockBalance({ asset: lockAsset, amount: remainingLock.toFixed(8) });
-      }
+        ? new Decimal(order.cummulativeQuoteQty)
+        : new Decimal(order.executedQty);
+      const remainingLock = new Decimal(lockAmount).minus(usedAmount);
+
+      unlockAndRecord({
+        flowId,
+        orderId: order.orderId,
+        side,
+        symbol: order.symbol,
+        asset: lockAsset,
+        amount: remainingLock.toFixed(8),
+      });
     }
 
-    console.log(`[TradingService] Order submitted:`, order);
     return response;
-  }, [symbolConfig, orderBook, availableBalances, currentPrice, lockBalance, unlockBalance, executeTrade]);
+  }, [
+    availableBalances,
+    currentPrice,
+    ensureFlowId,
+    lockBalance,
+    logOrderStatusStage,
+    orderBook.asks,
+    orderBook.bids,
+    pushJournal,
+    pushLifecycle,
+    settleFill,
+    symbolConfig.baseAsset,
+    symbolConfig.quoteAsset,
+    symbolConfig.symbol,
+    unlockAndRecord,
+  ]);
 
-  /**
-   * 取消订单
-   */
   const cancelOrder = useCallback((orderId: number): OrderResponse => {
     const order = matchingEngine.getOrder(orderId);
-    
     if (!order) {
       return {
         success: false,
@@ -278,38 +579,41 @@ export function useTradingService(): TradingServiceReturn {
       };
     }
 
+    const flowId = ensureFlowId(orderId);
     const response = matchingEngine.cancelOrder(orderId);
 
     if (response.success && response.order) {
-      // 解冻未成交部分
+      pushLifecycle({
+        flowId,
+        orderId,
+        side: order.side,
+        symbol: order.symbol,
+        stage: 'ORDER_CANCELED',
+      });
+
       const remainingQty = new Decimal(order.origQty).minus(new Decimal(order.executedQty));
-      
       if (remainingQty.gt(0)) {
-        if (order.side === 'BUY') {
-          const refundAmount = remainingQty.times(new Decimal(order.price)).toFixed(8);
-          unlockBalance({ asset: symbolConfig.quoteAsset, amount: refundAmount });
-        } else {
-          unlockBalance({ asset: symbolConfig.baseAsset, amount: remainingQty.toFixed(8) });
-        }
+        const refundAmount = order.side === 'BUY'
+          ? remainingQty.times(new Decimal(order.price)).toFixed(8)
+          : remainingQty.toFixed(8);
+        const refundAsset = order.side === 'BUY' ? symbolConfig.quoteAsset : symbolConfig.baseAsset;
+
+        unlockAndRecord({
+          flowId,
+          orderId,
+          side: order.side,
+          symbol: order.symbol,
+          asset: refundAsset,
+          amount: refundAmount,
+        });
       }
     }
 
     return response;
-  }, [symbolConfig, unlockBalance]);
+  }, [ensureFlowId, symbolConfig.baseAsset, symbolConfig.quoteAsset, unlockAndRecord, pushLifecycle]);
 
-  /**
-   * 获取活跃订单
-   */
-  const getActiveOrders = useCallback(() => {
-    return matchingEngine.getActiveOrders();
-  }, []);
-
-  /**
-   * 获取订单历史
-   */
-  const getOrderHistory = useCallback(() => {
-    return matchingEngine.getOrderHistory();
-  }, []);
+  const getActiveOrders = useCallback(() => matchingEngine.getActiveOrders(), []);
+  const getOrderHistory = useCallback(() => matchingEngine.getOrderHistory(), []);
 
   return {
     submitOrder,

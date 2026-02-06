@@ -6,6 +6,51 @@
 
 ---
 
+## 0. 任务分层原则（新增）
+
+### 0.1 两类任务定义
+
+| 类型 | 定义 | 本项目交付方式 |
+|------|------|---------------|
+| **真实执行** | 需要后端权威状态、服务端安全边界和基础设施支撑的能力 | 只定义接口契约与流程，不在前端直接执行 |
+| **可解释模拟** | 前端可本地确定性复现、可观察、可回放的业务能力 | 在前端完整实现（状态机 + 事件流 + 可视化） |
+
+### 0.2 模块归类（按本项目目标）
+
+| 模块 | 真实执行 | 可解释模拟 | 本期目标 |
+|------|---------|-----------|---------|
+| 订单生命周期（下单→风控→撮合→成交→清算→账务） | 服务端风控、清算与账本入库 | 本地状态机 + 生命周期时间线 + 分录事件 | ✅ 可解释模拟完整落地 |
+| 账户体系（统一账户 vs 经典账户） | 账户系统与授信管理 | 双账户模型切换 + 指标计算 | ✅ 可解释模拟完整落地 |
+| 订单簿与撮合逻辑 | 高性能撮合集群 | 本地撮合 + 订单簿协议一致性 | ✅ 持续增强 |
+| 费率与费用计算 | 费率后台配置与结算入账 | 费率引擎（maker/taker/VIP/折扣） | ✅ 可解释模拟落地 |
+| 现货 + 现货杠杆 | 借贷资产池、利息结算、强平执行 | 借币/还币/利息/风险率模拟 | ✅ 优先做现货杠杆 |
+| 合约（简化版） | 保证金引擎、资金费率、强平撮合 | 仓位/PnL/保证金率/强平价模拟 | 🟡 可选挑战 |
+
+### 0.3 实施约束（必须遵守）
+
+1. 所有“真实执行”能力必须先抽象为领域接口，前端仅实现 `MockAdapter`。
+2. 所有“可解释模拟”能力必须具备三件套：状态机、事件日志、UI 可视化。
+3. 不在前端引入 API Key、签名和真实资产逻辑。
+
+**契约优先示例**:
+
+```typescript
+// 真实执行契约（后续可接后端）
+export interface RiskService {
+  evaluate(order: NewOrderRequest, account: AccountSnapshot): RiskDecision;
+}
+
+// 可解释模拟实现（当前项目）
+export class MockRiskService implements RiskService {
+  evaluate(order: NewOrderRequest, account: AccountSnapshot): RiskDecision {
+    // 返回命中规则、风险等级、拒单原因
+    return { allow: true, rules: [], level: 'LOW' };
+  }
+}
+```
+
+---
+
 ## 一、项目现状分析
 
 ### 1.1 已完成功能
@@ -553,6 +598,108 @@ class MatchingEngine {
 
 ---
 
+### Phase 5: 交易所闭环补齐（新增，预计 7-10 天）
+
+#### 5.1 生命周期时间线 + 账务分录（可解释模拟）
+
+**目标**: 把“下单→风控→撮合→成交→清算→账务”变成可回放事件流，而不是散落在各模块里的隐式更新。
+
+**文件变更**:
+- [NEW] `src/domain/exchange/lifecycle/types.ts`
+- [NEW] `src/domain/exchange/lifecycle/lifecycleAtom.ts`
+- [NEW] `src/domain/exchange/ledger/ledgerAtom.ts`
+- [NEW] `src/features/exchange/components/OrderLifecycleTimeline.tsx`
+
+**核心要求**:
+- 每笔订单生成 `eventId`、`orderId`、`timestamp`、`payload`。
+- 每次资产变化必须对应至少 1 条账务分录（如：冻结、解冻、成交、手续费）。
+- UI 可按订单查看完整事件链路。
+
+---
+
+#### 5.2 账户体系双模式（可解释模拟）
+
+**目标**: 在当前 `free/locked` 基础上扩展统一账户与经典账户。
+
+**文件变更**:
+- [NEW] `src/domain/account/models/accountMode.ts`
+- [MODIFY] `src/domain/account/balanceAtom.ts`
+- [NEW] `src/features/account/components/AccountModePanel.tsx`
+
+**模式字段建议**:
+- 经典账户: `spotFree`, `spotLocked`
+- 统一账户: `walletBalance`, `equity`, `initialMargin`, `maintenanceMargin`, `unrealizedPnl`
+
+---
+
+#### 5.3 风控规则引擎（可解释模拟 + 真实执行契约）
+
+**目标**: 将当前校验升级为可扩展规则引擎，并保留后端接入边界。
+
+**文件变更**:
+- [NEW] `src/domain/risk/RiskService.ts`（接口）
+- [NEW] `src/domain/risk/MockRiskService.ts`（前端实现）
+- [MODIFY] `src/domain/trading/hooks/useTradingService.ts`
+
+**首批规则**:
+- 最小名义价值（minNotional）
+- 价格偏离保护（偏离阈值）
+- 余额与冻结校验
+- 下单频率限制（单位时间订单数）
+- 账户等级限制（KYC/账户模式联动）
+
+---
+
+#### 5.4 费率产品化（可解释模拟）
+
+**目标**: 把固定费率改成配置化费率引擎。
+
+**文件变更**:
+- [NEW] `src/domain/fee/FeeEngine.ts`
+- [NEW] `src/domain/fee/feeConfigAtom.ts`
+- [MODIFY] `src/domain/trading/engine/MatchingEngine.ts`
+- [MODIFY] `src/features/orders/components/TradeHistory.tsx`
+
+**费率维度**:
+- maker / taker
+- VIP 等级
+- 平台币抵扣开关（仅模拟）
+- 手续费明细解释（来源规则 + 折扣结果）
+
+---
+
+#### 5.5 现货杠杆最小闭环（可解释模拟）
+
+**目标**: 实现学习项目所需的现货杠杆核心链路。
+
+**文件变更**:
+- [NEW] `src/domain/margin/marginEngine.ts`
+- [NEW] `src/features/margin/components/MarginPanel.tsx`
+- [NEW] `src/features/margin/atoms/marginAtom.ts`
+
+**闭环范围**:
+- 借币/还币
+- 利息累积（按小时模拟）
+- 保证金率计算
+- 风险预警（不做真实强平执行）
+
+---
+
+#### 5.6 合约简化版（可选挑战）
+
+**目标**: 如果时间允许，增加最小合约仓位模型。
+
+**文件变更**:
+- [NEW] `src/domain/futures/futuresEngine.ts`
+- [NEW] `src/features/futures/components/FuturesPanel.tsx`
+
+**最小功能**:
+- 开仓/平仓（模拟）
+- 仓位未实现盈亏（Mark Price）
+- 保证金率与预估强平价
+
+---
+
 ## 五、验证计划
 
 ### 自动化验证
@@ -582,22 +729,31 @@ class MatchingEngine {
 - [ ] 订单簿 1000 条数据滚动流畅
 - [ ] 高频更新时 FPS >= 55
 
+#### Phase 5 验证
+- [ ] 每笔订单都有完整生命周期事件链路（可追溯）
+- [ ] 每次资产变动都能在账务分录中定位来源
+- [ ] 账户可在“经典/统一”模式间切换并显示对应指标
+- [ ] 风控拒单可解释（规则命中 + 原因）
+- [ ] 费率计算可解释（maker/taker、VIP、折扣）
+- [ ] 现货杠杆可跑通借币→交易→还币流程
+
 ---
 
 ## 六、优先级排序
 
-| 优先级 | 任务 | 预计时间 | 依赖 |
-|-------|------|---------|------|
-| P0 🔴 | MarketDataHub 统一订阅层 | 2 天 | 无 |
-| P0 🔴 | ExchangeInfo 集成 | 1 天 | 无 |
-| P0 🔴 | 订单状态机 | 2 天 | 无 |
-| P1 🟡 | 本地撮合引擎 | 2 天 | 订单状态机 |
-| P1 🟡 | 模拟账户系统 | 1 天 | 撮合引擎 |
-| P1 🟡 | 接入 OrderBook Worker | 1 天 | 无 |
-| P2 🟢 | 精度处理 (decimal.js) | 0.5 天 | 无 |
-| P2 🟢 | 历史数据加载 | 1 天 | 无 |
-| P2 🟢 | 虚拟列表 | 1 天 | 无 |
-| P2 🟢 | 渲染节流 | 0.5 天 | 无 |
+| 优先级 | 任务 | 类型 | 预计时间 | 依赖 |
+|-------|------|------|---------|------|
+| P0 🔴 | 生命周期事件流 + 账务分录 | 可解释模拟 | 2 天 | 订单状态机 |
+| P0 🔴 | 账户体系双模式（统一/经典） | 可解释模拟 | 2 天 | 模拟账户系统 |
+| P0 🔴 | 风控规则引擎（含可解释拒单） | 可解释模拟 + 真实执行契约 | 1.5 天 | 订单状态机 |
+| P0 🔴 | 费率引擎（maker/taker + VIP） | 可解释模拟 | 1 天 | 撮合引擎 |
+| P1 🟡 | 现货杠杆最小闭环 | 可解释模拟 | 2 天 | 账户体系双模式 |
+| P1 🟡 | MarketDataHub 统一订阅层 | 可解释模拟 | 2 天 | 无 |
+| P1 🟡 | ExchangeInfo 集成 | 可解释模拟 | 1 天 | 无 |
+| P1 🟡 | 接入 OrderBook Worker | 可解释模拟 | 1 天 | 无 |
+| P2 🟢 | 本地撮合引擎增强（逐档/滑点） | 可解释模拟 | 2 天 | 订单状态机 |
+| P2 🟢 | 历史数据加载 + 虚拟列表 + 节流 | 可解释模拟 | 2.5 天 | 无 |
+| P3 ⚪ | 合约简化版 | 可解释模拟 | 2-3 天 | 现货杠杆 |
 
 ---
 
@@ -617,6 +773,17 @@ Binance REST API 限流 1200 请求/分钟，需注意：
 - ticker 价格与 orderbook 买一卖一可能有微小差异
 - 建议 UI 上做容错处理（允许 0.1% 误差）
 
+### 7.4 真实执行边界（新增）
+以下能力仅做接口契约，不在前端执行：
+- 真实签名下单与撤单（需要服务端密钥管理）
+- 权威清算与总账入库（需要后端事务一致性）
+- 真实风控策略引擎（需要全局账户与行为数据）
+- 出入金、钱包、多签与审核流（需要链上与运营系统）
+
+**前端策略**:
+- 通过 `Service Interface + MockAdapter` 先完成可解释模拟
+- 后续接后端时只替换 Adapter，不改 UI 与领域模型
+
 ---
 
 ## 八、里程碑
@@ -625,9 +792,11 @@ Binance REST API 限流 1200 请求/分钟，需注意：
 |-------|---------|---------|
 | M1 | MarketDataHub 上线，单一 WS 连接 | Day 2 |
 | M2 | 交易规则动态加载，下单校验完整 | Day 3 |
-| M3 | 完整订单生命周期，可下单/撤单 | Day 6 |
-| M4 | 模拟成交，资产变动正确 | Day 8 |
-| M5 | 性能优化完成，高拟真体验 | Day 10 |
+| M3 | 生命周期时间线 + 账务分录可追溯 | Day 5 |
+| M4 | 账户体系支持统一/经典双模式 | Day 7 |
+| M5 | 风控可解释拒单 + 费率引擎上线 | Day 8 |
+| M6 | 现货杠杆最小闭环可演示 | Day 10 |
+| M7 | 性能优化与体验收敛完成 | Day 11-12 |
 
 ---
 
