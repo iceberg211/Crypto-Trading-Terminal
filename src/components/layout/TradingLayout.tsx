@@ -1,4 +1,5 @@
 import { Suspense, ReactNode } from 'react';
+import { useAtomValue } from 'jotai';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { TickerBar } from '../trading/TickerBar';
 import { RecentTrades } from '../trading/RecentTrades';
@@ -9,6 +10,14 @@ import { DevPanel } from '../ui/DevPanel';
 import { ChartContainer } from '../../features/chart/components/ChartContainer';
 import { OrderBook } from '../../features/orderbook/components/OrderBook';
 import { TradeForm } from '../../features/trade/components/TradeForm';
+import { TradingModeTabs } from '../../features/trade/components/TradingModeTabs';
+import { tradingModeAtom } from '../../features/trade/atoms/tradingModeAtom';
+import { MarginTradeForm } from '../../features/margin/components/MarginTradeForm';
+import { BorrowPanel } from '../../features/margin/components/BorrowPanel';
+import { MarginInfoPanel } from '../../features/margin/components/MarginInfoPanel';
+import { FuturesTradeForm } from '../../features/futures/components/FuturesTradeForm';
+import { FundingRateBar } from '../../features/futures/components/FundingRateBar';
+import { PositionPanel } from '../../features/futures/components/PositionPanel';
 
 /**
  * 安全组件包裹器：包含错误边界和加载状态
@@ -22,8 +31,44 @@ const SafeSection = ({ children, fallback }: { children: ReactNode; fallback?: R
 );
 
 /**
+ * 右栏交易表单区域
+ * 根据交易模式（现货/杠杆/合约）切换不同的表单和附属面板
+ */
+function TradeFormSection() {
+  const mode = useAtomValue(tradingModeAtom);
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* 交易模式 Tab */}
+      <TradingModeTabs />
+
+      {/* 合约模式：资金费率条 */}
+      {mode === 'futures' && <FundingRateBar />}
+
+      {/* 交易表单 */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {mode === 'spot' && <TradeForm />}
+        {mode === 'margin' && (
+          <>
+            <MarginTradeForm />
+            <BorrowPanel />
+            <MarginInfoPanel />
+          </>
+        )}
+        {mode === 'futures' && (
+          <>
+            <FuturesTradeForm />
+            <PositionPanel />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * 交易页面主布局
- * 类似币安的专业交易布局
+ * 类似币安的专业交易布局，支持现货/杠杆/合约 Tab 切换
  */
 export function TradingLayout() {
   return (
@@ -42,15 +87,15 @@ export function TradingLayout() {
       {/* Main Content Area */}
       <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_320px_320px] lg:divide-x lg:divide-line-dark">
         {/* Left Section: Chart + Order Panel */}
-        <div className="min-h-0 flex flex-col border-b border-line-dark lg:border-b-0">
+        <div className="min-h-0 flex flex-col border-b border-line-dark lg:border-b-0 lg:grid lg:grid-rows-[minmax(0,1fr)_minmax(180px,32%)]">
           {/* Chart */}
-          <div className="flex-[3] min-h-[320px] lg:min-h-0 border-b border-line-dark">
+          <div className="min-h-0 border-b border-line-dark">
             <SafeSection>
               <ChartContainer />
             </SafeSection>
           </div>
           {/* Order Panel */}
-          <div className="flex-[2] min-h-[200px] lg:min-h-0">
+          <div className="min-h-[160px] md:min-h-[200px] lg:min-h-0">
             <SafeSection>
               <OrderPanel />
             </SafeSection>
@@ -73,12 +118,12 @@ export function TradingLayout() {
           </div>
         </div>
 
-        {/* Right Column: Trade Form + Assets (Fixed width) */}
+        {/* Right Column: Trading Mode Tabs + Trade Form + Assets (Fixed width) */}
         <div className="shrink-0 flex flex-col min-h-[420px] lg:min-h-0">
-          {/* Trade Form */}
+          {/* Trade Form Section with Mode Tabs */}
           <div className="flex-1 min-h-0">
             <SafeSection>
-              <TradeForm />
+              <TradeFormSection />
             </SafeSection>
           </div>
           {/* Asset Panel */}

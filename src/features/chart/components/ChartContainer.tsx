@@ -131,6 +131,30 @@ function BasicChartView() {
     [activeSlots]
   );
 
+  const activeSubchartCount = activeSlots.length;
+  const mainChartLayoutStyle = useMemo(() => {
+    if (activeSubchartCount >= 3) {
+      return { flex: '8 1 0%', minHeight: '120px' };
+    }
+    if (activeSubchartCount === 2) {
+      return { flex: '9 1 0%', minHeight: '150px' };
+    }
+    if (activeSubchartCount === 1) {
+      return { flex: '10 1 0%', minHeight: '180px' };
+    }
+    return { flex: '1 1 0%', minHeight: '240px' };
+  }, [activeSubchartCount]);
+
+  const subchartLayoutStyle = useMemo(() => {
+    if (activeSubchartCount >= 3) {
+      return { flex: '3 1 0%', minHeight: '88px' };
+    }
+    if (activeSubchartCount === 2) {
+      return { flex: '3 1 0%', minHeight: '104px' };
+    }
+    return { flex: '3 1 0%', minHeight: '112px' };
+  }, [activeSubchartCount]);
+
   return (
     <>
       {/* 工具栏 */}
@@ -219,42 +243,47 @@ function BasicChartView() {
         />
       )}
 
-      {/* 主图表 */}
-      <div className={`relative min-h-[300px] ${activeSlots.length > 0 ? 'flex-[3]' : 'flex-1'}`}>
-        <div ref={setContainerRef} className="absolute inset-0" />
-        {loading && klineData.length === 0 && (
-          <div className="absolute inset-0 bg-bg-card">
-            <div className="h-full w-full animate-pulse">
-              <div className="h-full w-full bg-gradient-to-br from-bg-soft/40 via-bg-soft/10 to-bg-soft/40" />
-              <div className="absolute left-3 top-3 h-3 w-32 bg-bg-soft/60 rounded-sm" />
-              <div className="absolute left-3 top-8 h-3 w-40 bg-bg-soft/60 rounded-sm" />
-              <div className="absolute bottom-4 left-3 h-3 w-24 bg-bg-soft/60 rounded-sm" />
+      {/* 主图 + 副图：在可用高度内按比例分配，保证底部订单区不被挤没 */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {/* 主图表 */}
+        <div className="relative min-h-0" style={mainChartLayoutStyle}>
+          <div ref={setContainerRef} className="absolute inset-0" />
+          {loading && klineData.length === 0 && (
+            <div className="absolute inset-0 bg-bg-card">
+              <div className="h-full w-full animate-pulse">
+                <div className="h-full w-full bg-gradient-to-br from-bg-soft/40 via-bg-soft/10 to-bg-soft/40" />
+                <div className="absolute left-3 top-3 h-3 w-32 bg-bg-soft/60 rounded-sm" />
+                <div className="absolute left-3 top-8 h-3 w-40 bg-bg-soft/60 rounded-sm" />
+                <div className="absolute bottom-4 left-3 h-3 w-24 bg-bg-soft/60 rounded-sm" />
+              </div>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* 副图区域 (最多3个) */}
+        {subchartSlots.map((slot) =>
+          loading && klineData.length === 0 ? (
+            <div key={slot.id} className="border-t border-line-dark flex flex-col min-h-0" style={subchartLayoutStyle}>
+              <div className="flex items-center justify-between px-3 py-0.5 bg-bg-soft text-[10px]">
+                <span className="text-text-tertiary">加载中…</span>
+              </div>
+              <div className="min-h-0 flex-1 bg-bg-card">
+                <div className="h-full w-full animate-pulse bg-gradient-to-br from-bg-soft/30 via-bg-soft/10 to-bg-soft/30" />
+              </div>
+            </div>
+          ) : (
+            <SubchartPanel
+              key={slot.id}
+              slotId={slot.id}
+              type={slot.type}
+              onSetContainer={setSlotContainer}
+              onRemove={removeSubchart}
+              className="overflow-hidden"
+              style={subchartLayoutStyle}
+            />
+          )
         )}
       </div>
-
-      {/* 副图区域 (最多3个) */}
-      {subchartSlots.map((slot) =>
-        loading && klineData.length === 0 ? (
-          <div key={slot.id} className="border-t border-line-dark">
-            <div className="flex items-center justify-between px-3 py-0.5 bg-bg-soft text-[10px]">
-              <span className="text-text-tertiary">加载中…</span>
-            </div>
-            <div className="h-[160px] bg-bg-card">
-              <div className="h-full w-full animate-pulse bg-gradient-to-br from-bg-soft/30 via-bg-soft/10 to-bg-soft/30" />
-            </div>
-          </div>
-        ) : (
-          <SubchartPanel
-            key={slot.id}
-            slotId={slot.id}
-            type={slot.type}
-            onSetContainer={setSlotContainer}
-            onRemove={removeSubchart}
-          />
-        )
-      )}
     </>
   );
 }
