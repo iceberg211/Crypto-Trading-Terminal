@@ -67,4 +67,3 @@ export type WorkerToMainMessage =
         lastUpdateId: number;
       };
     };
-

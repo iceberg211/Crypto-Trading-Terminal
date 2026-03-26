@@ -8,7 +8,7 @@
  * - 订阅去重和引用计数
  */
 
-import { WebSocketManager } from '@/services/websocket/manager';
+import { WebSocketManager } from '@/core/gateway/WebSocketManager';
 import { SubscriptionManager } from './SubscriptionManager';
 import { runtimeConfig } from '@/core/config/runtime';
 import type { 

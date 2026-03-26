@@ -3,8 +3,8 @@ import { useRef } from 'react';
 import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
 import { tickerAtom } from '@/features/ticker/atoms/tickerAtom';
 import { useTicker } from '@/features/ticker/hooks/useTicker';
-import { SymbolSelector } from './SymbolSelector';
-import { PriceFlash } from '../ui/PriceFlash';
+import { SymbolSelector } from '@/features/symbol/components/SymbolSelector';
+import { PriceFlash } from '@/components/ui/PriceFlash';
 
 // 格式化大数字
 const formatLargeNumber = (value: string | number): string => {
@@ -27,19 +27,19 @@ export function TickerBar() {
   const symbolConfig = useAtomValue(symbolConfigAtom);
   const ticker = useAtomValue(tickerAtom);
   const prevPriceRef = useRef<string>('');
-  
+
   // 初始化 Ticker 数据加载
   useTicker();
 
   const lastPrice = ticker?.lastPrice || '';
-  const priceChangePercent = ticker?.priceChangePercent 
-    ? parseFloat(ticker.priceChangePercent) 
+  const priceChangePercent = ticker?.priceChangePercent
+    ? parseFloat(ticker.priceChangePercent)
     : 0;
   const isPositive = priceChangePercent >= 0;
 
   // 从 symbolConfigAtom 获取动态配置
   const { baseAsset, quoteAsset, pricePrecision } = symbolConfig;
-  
+
   // 更新前一价格引用
   if (lastPrice && lastPrice !== prevPriceRef.current) {
     prevPriceRef.current = lastPrice;
@@ -68,8 +68,8 @@ export function TickerBar() {
         <div className="shrink-0">
           <div className="font-heading text-xl lg:text-2xl font-bold font-mono tracking-tight tabular-nums">
 
-            <PriceFlash 
-              price={lastPrice} 
+            <PriceFlash
+              price={lastPrice}
               precision={pricePrecision}
               className={isPositive ? 'text-up' : 'text-down'}
             />

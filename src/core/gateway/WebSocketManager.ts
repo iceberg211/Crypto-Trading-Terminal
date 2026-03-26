@@ -90,7 +90,7 @@ export class WebSocketManager {
    */
   subscribe(handler: MessageHandler): () => void {
     this.messageHandlers.add(handler);
-    
+
     // 返回取消订阅函数
     return () => {
       this.messageHandlers.delete(handler);
@@ -148,7 +148,7 @@ export class WebSocketManager {
   private handleMessage(event: MessageEvent): void {
     try {
       const data = JSON.parse(event.data);
-      
+
       // 分发消息给所有订阅者
       this.messageHandlers.forEach((handler) => {
         handler(data);
@@ -165,7 +165,7 @@ export class WebSocketManager {
   private handleClose(): void {
     console.log('WebSocket 已断开');
     this.setStatus('disconnected');
-    
+
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;

@@ -6,7 +6,7 @@ import type {
   MainToWorkerMessage,
   OrderBookSnapshot,
   WorkerToMainMessage,
-} from '@/workers/orderbookEngine.types';
+} from '@/workers/types';
 
 export type OrderBookEngineState = {
   symbol: string;
@@ -32,7 +32,7 @@ export function useOrderBookEngine() {
   });
 
   useEffect(() => {
-    workerRef.current = new Worker(new URL('../workers/orderbook.worker.ts', import.meta.url), {
+    workerRef.current = new Worker(new URL('../../../workers/orderbook.worker.ts', import.meta.url), {
       type: 'module',
     });
 

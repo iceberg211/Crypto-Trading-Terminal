@@ -13,7 +13,7 @@ import type {
   OrderBookItem,
   OrderBookSnapshot,
   WorkerToMainMessage,
-} from './orderbookEngine.types';
+} from './types';
 
 type SideMap = Map<string, string>; // price -> quantity
 

@@ -1,9 +1,9 @@
 import { Suspense, ReactNode } from 'react';
 import { ErrorBoundary } from '../ErrorBoundary';
-import { TickerBar } from '../trading/TickerBar';
-import { RecentTrades } from '../trading/RecentTrades';
-import { AssetPanel } from '../trading/AssetPanel';
-import { OrderPanel } from '../trading/OrderPanel';
+import { TickerBar } from '@/features/ticker/components/TickerBar';
+import { RecentTrades } from '@/features/trade/components/RecentTrades';
+import { AssetPanel } from '@/features/account/components/AssetPanel';
+import { OrderPanel } from '@/features/orders/components/OrderPanel';
 import { NetworkStatusBar } from '../ui/NetworkStatusBar';
 import { DevPanel } from '../ui/DevPanel';
 import { ChartContainer } from '../../features/chart/components/ChartContainer';
