@@ -10,12 +10,14 @@ import {
 } from '../atoms/klineAtom';
 import { binanceApi } from '@/core/api/binance';
 import { marketDataHub } from '@/core/gateway';
+import {
+  KLINE_LIMITS,
+  klineMemoryCache,
+  mergeKlineBatch,
+  trimKlines,
+} from '@/domain/market';
 import { logger } from '@/utils/logger';
 import type { BinanceKlineWsMessage, Candle } from '@/types/binance';
-
-const MAX_KLINES = 3000;
-const INITIAL_KLINES = 200;
-const LOAD_MORE_KLINES = 200;
 
 function formatKlineError(err: unknown): string {
   const anyErr = err as any;
@@ -40,11 +42,6 @@ function formatKlineError(err: unknown): string {
   }
 
   return 'K 线数据加载失败，请稍后再试';
-}
-
-function trimKlines(data: Candle[]): Candle[] {
-  if (data.length <= MAX_KLINES) return data;
-  return data.slice(-MAX_KLINES);
 }
 
 /**
@@ -82,22 +79,33 @@ export function useKlineData() {
   /**
    * 加载历史 K 线数据
    */
-  const loadHistoricalData = useCallback(async () => {
+  const loadHistoricalData = useCallback(async (options?: { force?: boolean }) => {
     const requestId = ++loadRequestIdRef.current;
-    setLoading(true);
     setError(null);
 
+    if (!options?.force) {
+      const cached = klineMemoryCache.getFresh(symbol, interval);
+      if (cached) {
+        setKlineData(cached);
+        setHasMore(cached.length >= KLINE_LIMITS.initialCandles);
+        setLoading(false);
+        return;
+      }
+    }
+
+    setLoading(true);
+
     try {
-      const candles = await binanceApi.getKlines(symbol, interval, INITIAL_KLINES);
+      const candles = await binanceApi.getKlines(symbol, interval, KLINE_LIMITS.initialCandles);
       
       // 忽略过期响应
       if (requestId !== loadRequestIdRef.current) return;
       if (latestSymbolRef.current !== symbol || latestIntervalRef.current !== interval) return;
       
-      setKlineData(trimKlines(candles));
-      if (candles.length < INITIAL_KLINES) {
-        setHasMore(false);
-      }
+      const nextCandles = trimKlines(candles);
+      klineMemoryCache.set(symbol, interval, nextCandles);
+      setKlineData(nextCandles);
+      setHasMore(candles.length >= KLINE_LIMITS.initialCandles);
     } catch (err) {
       if (requestId !== loadRequestIdRef.current) return;
       setError(formatKlineError(err));
@@ -122,7 +130,7 @@ export function useKlineData() {
 
     try {
       setLoadingMore(true);
-      const olderCandles = await binanceApi.getKlines(symbol, interval, LOAD_MORE_KLINES, endTime);
+      const olderCandles = await binanceApi.getKlines(symbol, interval, KLINE_LIMITS.loadMoreCandles, endTime);
       
       // 忽略过期响应
       if (requestId !== loadMoreRequestIdRef.current) return 0;
@@ -134,22 +142,22 @@ export function useKlineData() {
         return 0;
       }
 
-      // 合并数据（去重）
+      const preview = mergeKlineBatch(klineData, olderCandles);
+
       setKlineData((prev) => {
-        const existingTimes = new Set(prev.map(c => c.time));
-        const newCandles = olderCandles.filter(c => !existingTimes.has(c.time));
-        
-        if (newCandles.length === 0) return prev;
-        
-        logger.debug(`[useKlineData] Loaded ${newCandles.length} more candles`);
-        return trimKlines([...newCandles, ...prev]);
+        const result = mergeKlineBatch(prev, olderCandles);
+        if (result.addedCount === 0) return prev;
+
+        klineMemoryCache.set(symbol, interval, result.candles);
+        logger.debug(`[useKlineData] Loaded ${result.addedCount} more candles`);
+        return result.candles;
       });
       
-      if (olderCandles.length < LOAD_MORE_KLINES) {
+      if (olderCandles.length < KLINE_LIMITS.loadMoreCandles) {
         setHasMore(false);
       }
 
-      return olderCandles.length;
+      return preview.addedCount;
     } catch (err) {
       if (requestId === loadMoreRequestIdRef.current) {
         setError(`加载更多失败：${formatKlineError(err)}`);
@@ -161,26 +169,18 @@ export function useKlineData() {
         setLoadingMore(false);
       }
     }
-  }, [klineData, loading, symbol, interval, setKlineData]);
+  }, [hasMore, interval, klineData, loading, loadingMore, setError, setKlineData, symbol]);
 
   /**
    * 合并实时 K 线更新
    */
   const mergeKlineUpdate = useCallback((newCandle: Candle) => {
     setKlineData((prev) => {
-      if (prev.length === 0) return [newCandle];
-
-      const lastCandle = prev[prev.length - 1];
-
-      // 同一根 K 线：更新最后一根
-      if (lastCandle.time === newCandle.time) {
-        return trimKlines([...prev.slice(0, -1), newCandle]);
-      }
-
-      // 新的 K 线：追加
-      return trimKlines([...prev, newCandle]);
+      const result = mergeKlineBatch(prev, [newCandle]);
+      klineMemoryCache.set(symbol, interval, result.candles);
+      return result.candles;
     });
-  }, [setKlineData]);
+  }, [interval, setKlineData, symbol]);
 
   /**
    * 使用 requestAnimationFrame 批量更新
@@ -266,9 +266,7 @@ export function useKlineData() {
       const requestId = ++reconnectFillRequestIdRef.current;
       
       // 拉取最近 50 根K线来补齐可能的断层
-      const FILL_LIMIT = 50;
-      
-      binanceApi.getKlines(symbol, interval, FILL_LIMIT)
+      binanceApi.getKlines(symbol, interval, KLINE_LIMITS.reconnectCandles)
         .then((recentCandles) => {
           // 忽略过期响应
           if (requestId !== reconnectFillRequestIdRef.current) return;
@@ -276,20 +274,12 @@ export function useKlineData() {
           
           if (recentCandles.length === 0) return;
           
-          // 合并数据，去重并覆盖更新
           setKlineData((prev) => {
-            const timeMap = new Map(prev.map(c => [c.time, c]));
-            
-            // 用新数据覆盖/补充
-            for (const candle of recentCandles) {
-              timeMap.set(candle.time, candle);
-            }
-            
-            // 按时间排序
-            const merged = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
-            
-            logger.debug(`[useKlineData] 断线补齐: 原 ${prev.length} 根, 补齐后 ${merged.length} 根`);
-            return trimKlines(merged);
+            const result = mergeKlineBatch(prev, recentCandles);
+            klineMemoryCache.set(symbol, interval, result.candles);
+
+            logger.debug(`[useKlineData] 断线补齐: 原 ${prev.length} 根, 补齐后 ${result.candles.length} 根`);
+            return result.candles;
           });
         })
         .catch((err) => {
@@ -302,19 +292,18 @@ export function useKlineData() {
    * 当 symbol 或 interval 变化时，立即清空旧数据并重新加载
    */
   useEffect(() => {
-    // 立即清空旧数据，避免显示错误的价格范围
-    setKlineData([]);
+    const cached = klineMemoryCache.getFresh(symbol, interval);
+    setKlineData(cached || []);
     
-    // 然后加载新数据
     loadHistoricalData();
-  }, [loadHistoricalData, setKlineData]);
+  }, [interval, loadHistoricalData, setKlineData, symbol]);
 
   return {
     klineData,
     loading,
     error,
     wsStatus,
-    reload: loadHistoricalData,
+    reload: () => loadHistoricalData({ force: true }),
     loadMore,
     loadingMore,
     hasMore,
