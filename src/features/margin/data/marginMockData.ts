@@ -6,9 +6,11 @@
 export type LeverageLevel = 3 | 5 | 10;
 
 export interface MarginAccountMock {
-    /** 净资产（USDT） */
+    /** 账户估值资产 */
+    valuationAsset: string;
+    /** 净资产 */
     netAsset: string;
-    /** 总负债（USDT） */
+    /** 总负债 */
     totalDebt: string;
     /** 保证金率 (0~1，>1 表示安全) */
     marginRatio: number;
@@ -22,6 +24,7 @@ export interface MarginAccountMock {
 
 /** 默认 Mock 杠杆账户 */
 export const defaultMarginAccount: MarginAccountMock = {
+    valuationAsset: 'USDT',
     netAsset: '10000.00',
     totalDebt: '0.00',
     marginRatio: 999,

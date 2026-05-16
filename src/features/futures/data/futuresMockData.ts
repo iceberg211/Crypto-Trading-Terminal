@@ -17,6 +17,7 @@ export interface FuturesPosition {
     marginType: MarginType;
     margin: string;
     unrealizedPnl: string;
+    settlementAsset: string;
     pnlPercent: string;
     liquidationPrice: string;
 }
@@ -45,6 +46,7 @@ export const mockPositions: FuturesPosition[] = [
         marginType: 'cross',
         margin: '482.50',
         unrealizedPnl: '+70.00',
+        settlementAsset: 'USDT',
         pnlPercent: '+14.51',
         liquidationPrice: '91850.00',
     },
@@ -59,6 +61,7 @@ export const mockPositions: FuturesPosition[] = [
         marginType: 'isolated',
         margin: '402.00',
         unrealizedPnl: '+45.00',
+        settlementAsset: 'USDT',
         pnlPercent: '+11.19',
         liquidationPrice: '2940.00',
     },

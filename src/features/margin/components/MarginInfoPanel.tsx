@@ -55,11 +55,11 @@ export const MarginInfoPanel = memo(function MarginInfoPanel() {
             <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between">
                     <span className="text-text-secondary">净资产</span>
-                    <span className="text-text-primary font-mono">{account.netAsset} USDT</span>
+                    <span className="text-text-primary font-mono">{account.netAsset} {account.valuationAsset}</span>
                 </div>
                 <div className="flex justify-between">
                     <span className="text-text-secondary">总负债</span>
-                    <span className="text-text-primary font-mono">{account.totalDebt} USDT</span>
+                    <span className="text-text-primary font-mono">{account.totalDebt} {account.valuationAsset}</span>
                 </div>
                 <div className="flex justify-between">
                     <span className="text-text-secondary">预估强平价</span>

@@ -1,4 +1,5 @@
 import { useState, memo } from 'react';
+import { useAtomValue } from 'jotai';
 import {
     defaultMarginAccount,
     LEVERAGE_OPTIONS,
@@ -6,6 +7,8 @@ import {
     type MarginAccountMock,
 } from '../data/marginMockData';
 import Decimal from 'decimal.js';
+import { availableBalancesAtom } from '@/domain/account';
+import { symbolConfigAtom } from '@/domain/symbol';
 
 // 杠杆倍数选择器
 function LeverageSelector({
@@ -72,6 +75,8 @@ function PercentageButtons({
  * 流式布局（不使用 flex h-full），确保在滚动容器中正常展示所有内容
  */
 export const MarginTradeForm = memo(function MarginTradeForm() {
+    const { baseAsset, quoteAsset, pricePrecision, quantityPrecision } = useAtomValue(symbolConfigAtom);
+    const balances = useAtomValue(availableBalancesAtom);
     const [side, setSide] = useState<'buy' | 'sell'>('buy');
     const [leverage, setLeverage] = useState<LeverageLevel>(3);
     const [price, setPrice] = useState('');
@@ -83,14 +88,15 @@ export const MarginTradeForm = memo(function MarginTradeForm() {
         leverage,
     });
 
-    // Mock 计算可借额度（基于杠杆）
-    const borrowable = side === 'buy'
-        ? new Decimal(account.borrowable.USDT || '0').mul(leverage).div(3).toFixed(2)
-        : new Decimal(account.borrowable.BTC || '0').mul(leverage).div(3).toFixed(6);
-    const borrowUnit = side === 'buy' ? 'USDT' : 'BTC';
-
-    const availableBalance = side === 'buy' ? '10000.00' : '0.500000';
-    const balanceUnit = side === 'buy' ? 'USDT' : 'BTC';
+    const borrowUnit = side === 'buy' ? quoteAsset : baseAsset;
+    const balanceUnit = borrowUnit;
+    const balancePrecision = side === 'buy' ? pricePrecision : quantityPrecision;
+    const borrowPrecision = side === 'buy' ? pricePrecision : quantityPrecision;
+    const borrowable = new Decimal(account.borrowable[borrowUnit] || '0')
+        .mul(leverage)
+        .div(3)
+        .toFixed(borrowPrecision);
+    const availableBalance = new Decimal(balances[balanceUnit] || '0').toFixed(balancePrecision);
 
     return (
         <div className="bg-bg-card">
@@ -161,7 +167,7 @@ export const MarginTradeForm = memo(function MarginTradeForm() {
                             className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-up focus-visible:ring-2 focus-visible:ring-up/35"
                             placeholder="0.00"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">USDT</span>
+                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{quoteAsset}</span>
                     </div>
                 </div>
 
@@ -176,7 +182,7 @@ export const MarginTradeForm = memo(function MarginTradeForm() {
                             className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-up focus-visible:ring-2 focus-visible:ring-up/35"
                             placeholder="0.00"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">BTC</span>
+                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{baseAsset}</span>
                     </div>
                 </div>
 
@@ -194,7 +200,7 @@ export const MarginTradeForm = memo(function MarginTradeForm() {
                             className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-up focus-visible:ring-2 focus-visible:ring-up/35"
                             placeholder="0.00"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">USDT</span>
+                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{quoteAsset}</span>
                     </div>
                 </div>
 
@@ -220,7 +226,7 @@ export const MarginTradeForm = memo(function MarginTradeForm() {
                             : 'bg-down hover:bg-down-light',
                     ].join(' ')}
                 >
-                    {side === 'buy' ? `杠杆买入 BTC` : `杠杆卖出 BTC`}
+                    {side === 'buy' ? `杠杆买入 ${baseAsset}` : `杠杆卖出 ${baseAsset}`}
                 </button>
             </div>
         </div>

@@ -1,15 +1,26 @@
-import { useState, memo } from 'react';
+import { useEffect, useMemo, useState, memo } from 'react';
+import { useAtomValue } from 'jotai';
 import { BORROW_RATES } from '../data/marginMockData';
-
-const ASSETS = ['USDT', 'BTC', 'ETH'] as const;
+import { symbolConfigAtom } from '@/domain/symbol';
 
 /**
  * 借币面板（Mock）
  * 展示借入资产选择、金额输入、利率预览
  */
 export const BorrowPanel = memo(function BorrowPanel() {
-    const [asset, setAsset] = useState<string>('USDT');
+    const { baseAsset, quoteAsset } = useAtomValue(symbolConfigAtom);
+    const assets = useMemo(
+        () => Array.from(new Set([quoteAsset, baseAsset, 'ETH'])),
+        [baseAsset, quoteAsset]
+    );
+    const [asset, setAsset] = useState<string>(quoteAsset);
     const [amount, setAmount] = useState('');
+
+    useEffect(() => {
+        if (!assets.includes(asset)) {
+            setAsset(quoteAsset);
+        }
+    }, [asset, assets, quoteAsset]);
 
     const rate = BORROW_RATES[asset] || '0.00';
     const dailyRate = (parseFloat(rate) / 365).toFixed(4);
@@ -28,7 +39,7 @@ export const BorrowPanel = memo(function BorrowPanel() {
             <div className="space-y-1">
                 <label className="text-xs text-text-tertiary">借入资产</label>
                 <div className="flex gap-1 p-0.5 bg-bg-panel border border-line-dark rounded-sm">
-                    {ASSETS.map((a) => (
+                    {assets.map((a) => (
                         <button
                             key={a}
                             type="button"

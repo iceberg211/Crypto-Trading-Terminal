@@ -29,7 +29,7 @@ function PositionRow({ pos }: { pos: FuturesPosition }) {
                         isPnlPositive ? 'text-up' : 'text-down',
                     ].join(' ')}
                 >
-                    {pos.unrealizedPnl} USDT
+                    {pos.unrealizedPnl} {pos.settlementAsset}
                 </span>
             </div>
 
@@ -92,6 +92,7 @@ function PositionRow({ pos }: { pos: FuturesPosition }) {
  */
 export const PositionPanel = memo(function PositionPanel() {
     const positions = mockPositions;
+    const settlementAsset = positions[0]?.settlementAsset || 'USDT';
     const totalPnl = positions.reduce(
         (sum, p) => sum + parseFloat(p.unrealizedPnl),
         0
@@ -110,7 +111,7 @@ export const PositionPanel = memo(function PositionPanel() {
                         totalPnl >= 0 ? 'text-up' : 'text-down',
                     ].join(' ')}
                 >
-                    {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} USDT
+                    {totalPnl >= 0 ? '+' : ''}{totalPnl.toFixed(2)} {settlementAsset}
                 </span>
             </div>
 

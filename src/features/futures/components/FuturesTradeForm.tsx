@@ -1,10 +1,14 @@
 import { useState, memo, useCallback } from 'react';
+import { useAtomValue } from 'jotai';
+import Decimal from 'decimal.js';
 import {
     LEVERAGE_MARKS,
     DEFAULT_FUTURES_LEVERAGE,
     type PositionSide,
     type MarginType,
 } from '../data/futuresMockData';
+import { availableBalancesAtom } from '@/domain/account';
+import { symbolConfigAtom } from '@/domain/symbol';
 
 // 杠杆滑块组件
 function LeverageSlider({
@@ -125,6 +129,8 @@ function PercentageButtons({
  * 流式布局（不使用 flex h-full），确保在滚动容器中正常展示所有内容
  */
 export const FuturesTradeForm = memo(function FuturesTradeForm() {
+    const { baseAsset, quoteAsset } = useAtomValue(symbolConfigAtom);
+    const balances = useAtomValue(availableBalancesAtom);
     const [direction, setDirection] = useState<PositionSide>('long');
     const [marginType, setMarginType] = useState<MarginType>('cross');
     const [leverage, setLeverage] = useState(DEFAULT_FUTURES_LEVERAGE);
@@ -135,6 +141,10 @@ export const FuturesTradeForm = memo(function FuturesTradeForm() {
     const [percentage, setPercentage] = useState(0);
 
     const isLong = direction === 'long';
+    const quoteBalance = new Decimal(balances[quoteAsset] || '0').toFixed(2);
+    const estimatedMargin = price && amount
+        ? new Decimal(price).mul(amount).div(leverage).toFixed(2)
+        : '--';
 
     return (
         <div className="bg-bg-card">
@@ -178,7 +188,7 @@ export const FuturesTradeForm = memo(function FuturesTradeForm() {
                 <div className="flex justify-between text-xs">
                     <span className="text-text-secondary">可用保证金</span>
                     <span className="text-text-primary font-mono font-medium">
-                        10,000.00 <span className="text-text-tertiary">USDT</span>
+                        {quoteBalance} <span className="text-text-tertiary">{quoteAsset}</span>
                     </span>
                 </div>
 
@@ -193,7 +203,7 @@ export const FuturesTradeForm = memo(function FuturesTradeForm() {
                             className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-up focus-visible:ring-2 focus-visible:ring-up/35"
                             placeholder="0.00"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">USDT</span>
+                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{quoteAsset}</span>
                     </div>
                 </div>
 
@@ -208,7 +218,7 @@ export const FuturesTradeForm = memo(function FuturesTradeForm() {
                             className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-up focus-visible:ring-2 focus-visible:ring-up/35"
                             placeholder="0"
                         />
-                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">BTC</span>
+                        <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{baseAsset}</span>
                     </div>
                 </div>
 
@@ -244,10 +254,7 @@ export const FuturesTradeForm = memo(function FuturesTradeForm() {
                     <div className="flex justify-between">
                         <span className="text-text-secondary">预估保证金</span>
                         <span className="text-text-primary font-mono">
-                            {price && amount
-                                ? (parseFloat(price) * parseFloat(amount) / leverage).toFixed(2)
-                                : '--'}{' '}
-                            USDT
+                            {estimatedMargin} {quoteAsset}
                         </span>
                     </div>
                     <div className="flex justify-between">
@@ -268,7 +275,7 @@ export const FuturesTradeForm = memo(function FuturesTradeForm() {
                             : 'bg-down hover:bg-down-light',
                     ].join(' ')}
                 >
-                    {isLong ? `开多 BTC ${leverage}x` : `开空 BTC ${leverage}x`}
+                    {isLong ? `开多 ${baseAsset} ${leverage}x` : `开空 ${baseAsset} ${leverage}x`}
                 </button>
             </div>
         </div>
