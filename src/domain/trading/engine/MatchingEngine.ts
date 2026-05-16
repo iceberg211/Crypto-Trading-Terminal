@@ -6,6 +6,7 @@
 import Decimal from 'decimal.js';
 import { OrderStateMachine } from './OrderStateMachine';
 import { OrderValidator } from './OrderValidator';
+import { calculateFillFee } from './feePolicy';
 import type { 
   Order, 
   NewOrderRequest, 
@@ -20,34 +21,17 @@ type OrderBookData = {
 };
 
 /**
- * 撮合引擎配置
- */
-interface MatchingEngineConfig {
-  slippageTolerance: number;  // 滑点容忍度（百分比）
-  makerFeeRate: number;       // 挂单手续费率
-  takerFeeRate: number;       // 吃单手续费率
-}
-
-const DEFAULT_CONFIG: MatchingEngineConfig = {
-  slippageTolerance: 0.1,     // 0.1%
-  makerFeeRate: 0.001,        // 0.1%
-  takerFeeRate: 0.001,        // 0.1%
-};
-
-/**
  * 本地撮合引擎
  * 基于实时订单簿数据模拟订单执行
  */
 export class MatchingEngine {
-  private config: MatchingEngineConfig;
   private orderIdCounter = 1;
   private tradeIdCounter = 1;
   private activeOrders: Map<number, Order> = new Map();
   private orderHistory: Order[] = [];
   private readonly STORAGE_KEY = 'TRADING_ENGINE_STATE_v1';
 
-  constructor(config: Partial<MatchingEngineConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+  constructor() {
     this.loadState();
   }
 
@@ -130,6 +114,8 @@ export class MatchingEngine {
     const order = OrderStateMachine.createOrder({
       orderId: this.orderIdCounter++,
       symbol: request.symbol,
+      baseAsset: request.baseAsset,
+      quoteAsset: request.quoteAsset,
       side: request.side,
       type: request.type,
       quantity: request.quantity,
@@ -182,6 +168,7 @@ export class MatchingEngine {
    */
   private executeMarketOrder(order: Order, orderBook: OrderBookData): Order {
     const levels = order.side === 'BUY' ? orderBook.asks : orderBook.bids;
+    const assets = this.resolveAssets(order);
     
     if (levels.length === 0) {
       return OrderStateMachine.transition(order, 'REJECT', {
@@ -200,15 +187,22 @@ export class MatchingEngine {
       const levelQty = new Decimal(qty);
       const fillQty = Decimal.min(remainingQty, levelQty);
       const fillPrice = new Decimal(price);
-      
+
       const quoteQty = fillQty.times(fillPrice);
-      const commission = quoteQty.times(this.config.takerFeeRate);
+      const fee = calculateFillFee({
+        quoteQty: quoteQty.toString(),
+        baseQty: fillQty.toString(),
+        isMaker: false,
+        side: order.side,
+        baseAsset: assets.baseAsset,
+        quoteAsset: assets.quoteAsset,
+      });
 
       fills.push({
         price: fillPrice.toFixed(8),
         quantity: fillQty.toFixed(8),
-        commission: commission.toFixed(8),
-        commissionAsset: order.side === 'BUY' ? order.symbol.replace(/USDT$|BUSD$/, '') : 'USDT',
+        commission: fee.commission,
+        commissionAsset: fee.commissionAsset,
         tradeId: this.tradeIdCounter++,
         time: Date.now(),
       });
@@ -248,9 +242,10 @@ export class MatchingEngine {
    * 执行限价单
    * 检查是否可以立即成交，否则挂单
    */
-  private executeLimitOrder(order: Order, orderBook: OrderBookData): Order {
+  private executeLimitOrder(order: Order, orderBook: OrderBookData, isMakerFill = false): Order {
     const orderPrice = new Decimal(order.price);
     const levels = order.side === 'BUY' ? orderBook.asks : orderBook.bids;
+    const assets = this.resolveAssets(order);
 
     // 检查是否可以成交
     const canMatch = levels.length > 0 && (
@@ -280,13 +275,20 @@ export class MatchingEngine {
       const levelQty = new Decimal(qty);
       const fillQty = Decimal.min(remainingQty, levelQty);
       const quoteQty = fillQty.times(levelPrice);
-      const commission = quoteQty.times(this.config.takerFeeRate);
+      const fee = calculateFillFee({
+        quoteQty: quoteQty.toString(),
+        baseQty: fillQty.toString(),
+        isMaker: isMakerFill,
+        side: order.side,
+        baseAsset: assets.baseAsset,
+        quoteAsset: assets.quoteAsset,
+      });
 
       fills.push({
         price: levelPrice.toFixed(8),
         quantity: fillQty.toFixed(8),
-        commission: commission.toFixed(8),
-        commissionAsset: order.side === 'BUY' ? order.symbol.replace(/USDT$|BUSD$/, '') : 'USDT',
+        commission: fee.commission,
+        commissionAsset: fee.commissionAsset,
         tradeId: this.tradeIdCounter++,
         time: Date.now(),
       });
@@ -359,6 +361,23 @@ export class MatchingEngine {
    */
   getActiveOrders(): Order[] {
     return Array.from(this.activeOrders.values());
+  }
+
+  private resolveAssets(order: Order): { baseAsset: string; quoteAsset: string } {
+    if (order.baseAsset && order.quoteAsset) {
+      return {
+        baseAsset: order.baseAsset,
+        quoteAsset: order.quoteAsset,
+      };
+    }
+
+    const knownQuoteAssets = ['USDT', 'BUSD', 'USDC', 'BTC', 'ETH', 'BNB'];
+    const quoteAsset = knownQuoteAssets.find((asset) => order.symbol.endsWith(asset)) || 'USDT';
+
+    return {
+      baseAsset: order.symbol.slice(0, -quoteAsset.length),
+      quoteAsset,
+    };
   }
 
   /**
@@ -452,7 +471,7 @@ export class MatchingEngine {
       const initialFillsCount = order.fills.length;
 
       // 尝试执行撮合
-      const updatedOrder = this.executeLimitOrder(order, orderBook);
+      const updatedOrder = this.executeLimitOrder(order, orderBook, true);
 
       // 如果发生了成交或状态变化（executeLimitOrder 在未成交时返回原对象）
       if (updatedOrder !== order) {

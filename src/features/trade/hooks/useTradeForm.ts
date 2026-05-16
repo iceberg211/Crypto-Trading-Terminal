@@ -28,7 +28,7 @@ export function useTradeForm() {
   // 使用新的交易服务
   const tradingService = useTradingService();
   
-  const { quantityPrecision, baseAsset, quoteAsset } = symbolConfig;
+  const { pricePrecision, quantityPrecision, baseAsset, quoteAsset } = symbolConfig;
 
   // 从 tradingService 获取余额
   const balance = {
@@ -239,5 +239,7 @@ export function useTradeForm() {
     cancelOrder: tradingService.cancelOrder,
     baseAsset,
     quoteAsset,
+    pricePrecision,
+    quantityPrecision,
   };
 }

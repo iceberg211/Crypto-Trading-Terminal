@@ -5,7 +5,7 @@ import { OrderType } from '../atoms/tradeAtom';
 import { showOrderConfirmationAtom } from '../atoms/settingsAtom';
 import { TradeConfirmationModal } from './TradeConfirmationModal';
 import { FeePreview } from './FeePreview';
-import Decimal from 'decimal.js';
+import { getTradeFormDisplay } from '../utils/tradeFormDisplay';
 
 // 订单类型选择器
 function OrderTypeSelector({
@@ -82,15 +82,26 @@ export function TradeForm() {
     setStopPrice,
     setPercentage,
     submitOrder,
+    baseAsset,
+    quoteAsset,
+    pricePrecision,
+    quantityPrecision,
   } = useTradeForm();
 
   const showConfirmation = useAtomValue(showOrderConfirmationAtom);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
 
-  const availableBalance = form.side === 'buy' ? balance.USDT : balance.BTC;
-  const balanceUnit = form.side === 'buy' ? 'USDT' : 'BTC';
   const isMarketOrder = form.type === 'market';
   const isStopLimit = form.type === 'stop_limit';
+  const display = getTradeFormDisplay({
+    side: form.side,
+    submitting,
+    baseAsset,
+    quoteAsset,
+    balances: balance,
+    pricePrecision,
+    quantityPrecision,
+  });
 
   const handlePreSubmit = () => {
     if (showConfirmation) {
@@ -138,8 +149,8 @@ export function TradeForm() {
         <div className="flex justify-between text-xs">
           <span className="text-text-secondary">可用</span>
           <span className="text-text-primary font-mono font-medium">
-            {new Decimal(availableBalance).toFixed(form.side === 'buy' ? 2 : 6)}{' '}
-            <span className="text-text-tertiary">{balanceUnit}</span>
+            {display.availableBalance}{' '}
+            <span className="text-text-tertiary">{display.balanceUnit}</span>
           </span>
         </div>
 
@@ -155,7 +166,7 @@ export function TradeForm() {
                 className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/35"
                 placeholder="触发价格"
               />
-              <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">USDT</span>
+              <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{display.quoteUnit}</span>
             </div>
           </div>
         )}
@@ -174,7 +185,7 @@ export function TradeForm() {
                 className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/35"
                 placeholder="0.00"
               />
-              <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">USDT</span>
+              <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{display.quoteUnit}</span>
             </div>
           </div>
         )}
@@ -200,7 +211,7 @@ export function TradeForm() {
               className="w-full h-8 bg-bg-soft/80 text-text-primary px-3 text-xs rounded-sm border border-line-dark outline-none font-mono transition-colors hover:border-line-light focus:border-accent focus-visible:ring-2 focus-visible:ring-accent/35"
               placeholder="0.00"
             />
-            <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">BTC</span>
+            <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{display.amountUnit}</span>
           </div>
         </div>
 
@@ -222,7 +233,7 @@ export function TradeForm() {
               placeholder="0.00"
               disabled={isMarketOrder}
             />
-            <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">USDT</span>
+            <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">{display.quoteUnit}</span>
           </div>
         </div>
 
@@ -231,6 +242,8 @@ export function TradeForm() {
           price={form.price}
           quantity={form.amount}
           side={form.side}
+          baseAsset={baseAsset}
+          quoteAsset={quoteAsset}
           isMarketOrder={isMarketOrder}
         />
       </div>
@@ -245,9 +258,7 @@ export function TradeForm() {
               : 'bg-down hover:bg-down-light'
             } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
-          {submitting ? '处理中…' : (
-            form.side === 'buy' ? '买入 BTC' : '卖出 BTC'
-          )}
+          {display.submitLabel}
         </button>
       </div>
 
@@ -262,7 +273,7 @@ export function TradeForm() {
           price: form.price,
           amount: form.amount,
           total: form.total,
-          symbol: 'BTC/USDT'
+          symbol: display.symbolLabel
         }}
       />
     </div>

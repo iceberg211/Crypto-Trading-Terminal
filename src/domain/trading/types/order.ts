@@ -55,6 +55,7 @@ export type RejectReason =
   | 'INVALID_STEP_SIZE'       // 数量精度不符
   | 'MARKET_CLOSED'           // 市场关闭
   | 'ORDER_WOULD_TRIGGER_IMMEDIATELY' // 止损单会立即触发
+  | 'RISK_REJECTED'          // 风控拒绝
   | 'UNKNOWN';                // 未知原因
 
 // ==================== 订单实体 ====================
@@ -64,6 +65,8 @@ export type RejectReason =
  */
 export interface NewOrderRequest {
   symbol: string;
+  baseAsset?: string;
+  quoteAsset?: string;
   side: OrderSide;
   type: OrderType;
   quantity: string;
@@ -92,6 +95,8 @@ export interface Order {
   orderId: number;
   clientOrderId: string;
   symbol: string;
+  baseAsset?: string;
+  quoteAsset?: string;
   side: OrderSide;
   type: OrderType;
   status: OrderStatus;

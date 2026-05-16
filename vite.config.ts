@@ -10,6 +10,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'jotai'],
+          charts: ['lightweight-charts'],
+          vendor: ['axios', 'dayjs', 'decimal.js', 'react-window'],
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     proxy: {

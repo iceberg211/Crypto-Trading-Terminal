@@ -170,6 +170,8 @@ export class OrderStateMachine {
       orderId: params.orderId,
       clientOrderId: params.clientOrderId || `order_${now}_${Math.random().toString(36).slice(2, 8)}`,
       symbol: params.symbol,
+      baseAsset: params.baseAsset,
+      quoteAsset: params.quoteAsset,
       side: params.side,
       type: params.type,
       status: 'NEW',
@@ -202,6 +204,8 @@ interface CreateOrderParams {
   orderId: number;
   clientOrderId?: string;
   symbol: string;
+  baseAsset?: string;
+  quoteAsset?: string;
   side: Order['side'];
   type: Order['type'];
   quantity: string;

@@ -24,6 +24,8 @@ import {
   buildTradeSettleJournal,
   buildUnlockJournal,
 } from '@/domain/exchange';
+import { checkRiskAtom } from '@/domain/risk';
+import { buildRiskContext, formatRiskDecisionMessage, toRiskRejectedResponse } from '../service/orderPreflight';
 import type { NewOrderRequest, Order, OrderResponse, OrderSide, OrderType } from '@/domain/trading/types';
 import type { LifecycleStage } from '@/domain/exchange';
 
@@ -63,6 +65,7 @@ export function useTradingService(): TradingServiceReturn {
 
   const appendLifecycleEvent = useSetAtom(appendLifecycleEventAtom);
   const appendLedgerJournal = useSetAtom(appendLedgerJournalAtom);
+  const checkRisk = useSetAtom(checkRiskAtom);
 
   const currentPrice = ticker?.lastPrice || '0';
 
@@ -379,6 +382,8 @@ export function useTradingService(): TradingServiceReturn {
 
     const request: NewOrderRequest = {
       symbol: symbolConfig.symbol,
+      baseAsset: symbolConfig.baseAsset,
+      quoteAsset: symbolConfig.quoteAsset,
       side,
       type,
       quantity,
@@ -401,6 +406,31 @@ export function useTradingService(): TradingServiceReturn {
     }
 
     const currentBalance = availableBalances[lockAsset] || '0';
+    const marketPrice = currentPrice && currentPrice !== '0' ? currentPrice : price || '0';
+    const riskDecision = checkRisk(buildRiskContext({
+      request,
+      availableBalance: currentBalance,
+      marketPrice,
+    }));
+
+    if (!riskDecision.allow) {
+      const message = formatRiskDecisionMessage(riskDecision);
+      pushLifecycle({
+        flowId,
+        orderId: predictedOrderId,
+        side,
+        symbol: symbolConfig.symbol,
+        stage: 'ORDER_REJECTED',
+        payload: {
+          code: 'RISK_REJECTED',
+          message,
+          triggers: riskDecision.triggers,
+        },
+      });
+
+      return toRiskRejectedResponse(riskDecision);
+    }
+
     if (new Decimal(lockAmount).gt(new Decimal(currentBalance))) {
       pushLifecycle({
         flowId,
@@ -552,6 +582,7 @@ export function useTradingService(): TradingServiceReturn {
     return response;
   }, [
     availableBalances,
+    checkRisk,
     currentPrice,
     ensureFlowId,
     lockBalance,

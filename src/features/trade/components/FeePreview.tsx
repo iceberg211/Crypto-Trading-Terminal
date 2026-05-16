@@ -11,8 +11,8 @@
 import { memo, useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import Decimal from 'decimal.js';
-import { feeConfigAtom, feeEngine } from '@/domain/fee';
-import type { FeeResult } from '@/domain/fee';
+import { feeConfigAtom } from '@/domain/fee';
+import { calculateFillFee, type FillFeeResult } from '@/domain/trading/engine/feePolicy';
 
 interface FeePreviewProps {
     /** 价格 */
@@ -21,6 +21,10 @@ interface FeePreviewProps {
     quantity: string;
     /** 买/卖方向 */
     side: 'buy' | 'sell';
+    /** 基础资产 */
+    baseAsset: string;
+    /** 报价资产 */
+    quoteAsset: string;
     /** 是否为市价单 (默认为 taker) */
     isMarketOrder?: boolean;
 }
@@ -32,12 +36,14 @@ export const FeePreview = memo(function FeePreview({
     price,
     quantity,
     side,
+    baseAsset,
+    quoteAsset,
     isMarketOrder = false,
 }: FeePreviewProps) {
     const feeConfig = useAtomValue(feeConfigAtom);
 
     // 计算费率结果
-    const feeResult: FeeResult | null = useMemo(() => {
+    const feeResult: FillFeeResult | null = useMemo(() => {
         // 验证输入
         if (!price || !quantity) return null;
 
@@ -50,15 +56,24 @@ export const FeePreview = memo(function FeePreview({
 
         // 市价单默认为 taker
         const isMaker = !isMarketOrder;
-        return feeEngine.estimate(price, quantity, isMaker);
-    }, [price, quantity, isMarketOrder, feeConfig]);
+        const quoteQty = new Decimal(price).times(quantity).toString();
+
+        return calculateFillFee({
+            quoteQty,
+            baseQty: quantity,
+            isMaker,
+            side: side === 'buy' ? 'BUY' : 'SELL',
+            baseAsset,
+            quoteAsset,
+        });
+    }, [baseAsset, price, quantity, quoteAsset, side, isMarketOrder, feeConfig]);
 
     // 无数据时不渲染
     if (!feeResult) {
         return null;
     }
 
-    const feeAmount = new Decimal(feeResult.amount);
+    const feeAmount = new Decimal(feeResult.commission);
     const displayAmount = feeAmount.lt(0.00000001) ? '< 0.00000001' : feeAmount.toFixed(8);
 
     return (
@@ -69,7 +84,7 @@ export const FeePreview = memo(function FeePreview({
                 <span className="font-mono text-text-primary">
                     {displayAmount}{' '}
                     <span className="text-text-tertiary">
-                        {side === 'buy' ? 'BTC' : 'USDT'}
+                        {feeResult.commissionAsset}
                     </span>
                 </span>
             </div>
