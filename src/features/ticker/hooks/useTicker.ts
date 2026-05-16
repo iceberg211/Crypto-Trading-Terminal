@@ -2,7 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { symbolAtom } from '@/features/symbol/atoms/symbolAtom';
 import { tickerAtom, tickerLoadingAtom, tickerErrorAtom } from '../atoms/tickerAtom';
-import { binanceApi } from '@/services/api/binance';
+import { binanceApi } from '@/core/api/binance';
 import { marketDataHub } from '@/core/gateway';
 import type { Ticker24hr } from '@/types/binance';
 

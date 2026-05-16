@@ -11,10 +11,10 @@ import {
   orderBookBufferSizeAtom,
   orderBookLastGapAtom,
 } from '../atoms/orderBookAtom';
-import { binanceApi } from '@/services/api/binance';
+import { binanceApi } from '@/core/api/binance';
 import { marketDataHub } from '@/core/gateway';
-import { useOrderBookEngine } from '@/hooks/useOrderBookEngine';
-import type { HubWsStatus } from '@/workers/orderbookEngine.types';
+import { useOrderBookEngine } from './useOrderBookEngine';
+import type { HubWsStatus } from '@/workers/types';
 
 /**
  * 订单簿数据管理 Hook

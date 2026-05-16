@@ -8,7 +8,7 @@ import {
   klineErrorAtom,
   wsStatusAtom,
 } from '../atoms/klineAtom';
-import { binanceApi } from '@/services/api/binance';
+import { binanceApi } from '@/core/api/binance';
 import { marketDataHub } from '@/core/gateway';
 import type { BinanceKlineWsMessage, Candle } from '@/types/binance';
 

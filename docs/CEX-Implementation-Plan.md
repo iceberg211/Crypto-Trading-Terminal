@@ -3,14 +3,51 @@
 > **目标**: 将当前"行情展示 + 模拟交易"的前端原型升级为**高拟真的中心化交易所现货交易页面**
 > 
 > **范围**: 纯前端实现，使用本地模拟撮合引擎，不依赖真实后端
->
-> **本文档最后校准**: 2026-02-03（已按当前仓库实际代码做过对齐，并标记缺口）
->
-> **状态图例**:
-> - ✅ 已实现（现有代码已具备，可做小修/增强）
-> - 🟡 部分实现（有雏形/可用，但与“高拟真 CEX”仍有关键差距）
-> - 🔴 未实现（文档提出但仓库尚未落地）
-> - ⚪️ 文档过期（计划中说缺，但代码里其实已经实现；需要更新计划表述）
+
+---
+
+## 0. 任务分层原则（新增）
+
+### 0.1 两类任务定义
+
+| 类型 | 定义 | 本项目交付方式 |
+|------|------|---------------|
+| **真实执行** | 需要后端权威状态、服务端安全边界和基础设施支撑的能力 | 只定义接口契约与流程，不在前端直接执行 |
+| **可解释模拟** | 前端可本地确定性复现、可观察、可回放的业务能力 | 在前端完整实现（状态机 + 事件流 + 可视化） |
+
+### 0.2 模块归类（按本项目目标）
+
+| 模块 | 真实执行 | 可解释模拟 | 本期目标 |
+|------|---------|-----------|---------|
+| 订单生命周期（下单→风控→撮合→成交→清算→账务） | 服务端风控、清算与账本入库 | 本地状态机 + 生命周期时间线 + 分录事件 | ✅ 可解释模拟完整落地 |
+| 账户体系（统一账户 vs 经典账户） | 账户系统与授信管理 | 双账户模型切换 + 指标计算 | ✅ 可解释模拟完整落地 |
+| 订单簿与撮合逻辑 | 高性能撮合集群 | 本地撮合 + 订单簿协议一致性 | ✅ 持续增强 |
+| 费率与费用计算 | 费率后台配置与结算入账 | 费率引擎（maker/taker/VIP/折扣） | ✅ 可解释模拟落地 |
+| 现货 + 现货杠杆 | 借贷资产池、利息结算、强平执行 | 借币/还币/利息/风险率模拟 | ✅ 优先做现货杠杆 |
+| 合约（简化版） | 保证金引擎、资金费率、强平撮合 | 仓位/PnL/保证金率/强平价模拟 | 🟡 可选挑战 |
+
+### 0.3 实施约束（必须遵守）
+
+1. 所有“真实执行”能力必须先抽象为领域接口，前端仅实现 `MockAdapter`。
+2. 所有“可解释模拟”能力必须具备三件套：状态机、事件日志、UI 可视化。
+3. 不在前端引入 API Key、签名和真实资产逻辑。
+
+**契约优先示例**:
+
+```typescript
+// 真实执行契约（后续可接后端）
+export interface RiskService {
+  evaluate(order: NewOrderRequest, account: AccountSnapshot): RiskDecision;
+}
+
+// 可解释模拟实现（当前项目）
+export class MockRiskService implements RiskService {
+  evaluate(order: NewOrderRequest, account: AccountSnapshot): RiskDecision {
+    // 返回命中规则、风险等级、拒单原因
+    return { allow: true, rules: [], level: 'LOW' };
+  }
+}
+```
 
 ---
 
@@ -18,92 +55,37 @@
 
 ### 1.1 已完成功能
 
-| 模块 | 关键文件/入口 | 状态 | 备注 |
-|------|--------------|------|------|
-| 交易页整体布局 | `src/components/layout/TradingLayout.tsx` | ✅ | 图表 / 盘口 / 成交 / 下单 / 资产 / 订单面板组合完成 |
-| 统一行情订阅层（Public WS） | `src/core/gateway/MarketDataHub.ts` | 🟡 | 图表/成交/ticker 已走 Hub；订单簿仍有独立链路（见下文缺口） |
-| WS 连接管理 | `src/services/websocket/manager.ts` | 🟡 | 基础可用；需补“手动断开不重连”等边界、退避策略等 |
-| 交易规则（ExchangeInfo） | `src/core/config/ExchangeInfo.ts` | ✅ | 已做 localStorage 缓存 + fallback + 后台刷新 |
-| K 线图表（LWC） | `src/features/chart/*` | ✅ | 历史加载 + 左拉加载 + WS 增量 + 断线补齐 |
-| 订单簿（UI + 聚合/虚拟列表） | `src/features/orderbook/components/OrderBook.tsx` | ✅ | 已用 `react-window`；聚合与 tooltip 已实现 |
-| 订单簿（高频处理） | `src/features/orderbook/hooks/useOrderBook.ts` + `src/workers/tradingEngine.worker.ts` | 🟡 | 已用 Worker，但 WS 链路不统一、同步协议仍偏简化 |
-| 最近成交（历史 + WS + 虚拟列表） | `src/components/trading/RecentTrades.tsx` | ✅ | 首屏 REST 历史 + WS 增量 + 虚拟列表 |
-| 24h Ticker | `src/features/ticker/hooks/useTicker.ts` + `src/components/trading/TickerBar.tsx` | ✅ | WS 实时 + 价格闪烁效果 |
-| 模拟账户（余额/冻结/成交入账） | `src/domain/account/balanceAtom.ts` | ✅ | free/locked、冻结/解冻、成交变更 |
-| 订单状态机 | `src/domain/trading/engine/OrderStateMachine.ts` | ✅ | 基础状态转换已实现 |
-| 本地撮合引擎 | `src/domain/trading/engine/MatchingEngine.ts` | 🟡 | 已支持市价/限价/止损单（部分逻辑可增强：精度/手续费/滑点等） |
-| 交易服务（撮合 + 余额 + 订单联动） | `src/domain/trading/hooks/useTradingService.ts` | 🟡 | 已可用；仍缺“CEX 私有流事件模型/回放”等能力 |
-| 精度工具封装 | `src/utils/decimal.ts` | ✅ | 可继续统一替换代码中散落的 parseFloat/toFixed |
-| 订单面板 | `src/components/trading/OrderPanel.tsx` + `src/features/orders/*` | ✅ | 已有当前委托/历史/成交 3 tab（数据为本地模拟） |
+| 模块 | 文件 | 状态 |
+|------|------|------|
+| K 线图表 | `useKlineData.ts`, `ChartContainer.tsx` | ✅ 完成 |
+| 订单簿 | `useOrderBook.ts`, `OrderBook.tsx` | ✅ 完成（快照+增量+Gap检测） |
+| 最近成交 | `RecentTrades.tsx` | ✅ 完成 |
+| 24h Ticker | `useTicker.ts`, `TickerBar.tsx` | ✅ 完成 |
+| WebSocket 管理 | `manager.ts` | ✅ 基础封装 |
+| 交易表单 | `TradeForm.tsx`, `tradeAtom.ts` | ⚠️ 本地模拟 |
+| 订单管理 | `useOrders.ts` | ⚠️ 本地模拟 |
+| 资产面板 | `AssetPanel.tsx` | ⚠️ 本地模拟 |
+| 订单簿 Worker | `orderbook.worker.ts`, `useOrderBookWorker.ts` | ⚠️ 已写但未接入 |
 
 ### 1.2 存在的问题
 
-> 注：本节已按当前代码“对齐”更新。原文中部分问题（如 K 线左拉、RecentTrades 首屏历史、ExchangeInfo、状态机/撮合）已实现，属于 ⚪️ 文档过期项。
-
-1. 🟡 **订单簿链路使用独立 Worker WS**
-   - 当前图表/成交/ticker 用 `MarketDataHub`；订单簿用 `tradingEngine.worker.ts` 自建 WS。
-   - 架构现状：存在两个 Worker 文件：
-     - `src/workers/tradingEngine.worker.ts`：**当前主路径**，管理 WS 连接 + 订单簿合并/节流
-     - `src/workers/orderbook.worker.ts`：纯合并/排序逻辑，**未被主路径使用**（建议清理或明确用途）
-   - 风险：两套连接/重连/状态、订阅残留更难治理，后续加"全局健康度/延迟监控"会更复杂。
-
-2. 🔴 **缺少“市场列表/搜索/自选/最近”的终端级能力**
-   - 现在 `SymbolSelector` 主要基于 `POPULAR_SYMBOLS`，未消费 `ExchangeInfo.getAllSymbols()/searchSymbols()`。
-
-3. 🟡 **订单簿同步协议仍偏简化**
-   - `tradingEngine.worker.ts` 内部有 buffer/gap 检测，实现了基本的对齐逻辑。
-   - 但连续性校验（`next.U == prev.u + 1`）在 gap 后的恢复策略仍可增强。
-
-4. 🔴 **缺少“私有数据平面（Private Data plane）”的抽象**
-   - 即使是纯前端模拟，也建议把“余额变更/订单状态/成交回报”抽象成一个事件流（模拟 CEX 的用户数据流），以支持：乐观 UI、回滚、断线重放。
-
-5. 🟡 **工程化基线不稳**
-   - `pnpm lint`/`pnpm build` 需要保证可稳定通过（建议作为 P0 守门项）。
-   - 建议增加最小验证（哪怕先是 domain 层的单元测试/脚本）。
-
-6. 🟡 **图表与交易的深度融合不足**
-   - 缺少订单线/止损线/成交标记等 “Chart Overlay / Chart Trading” 能力（终端拟真度会明显提升）。
-
-### 1.3 与业界成熟 CEX（整页交易终端）的差距清单（本项目范围内）
-
-> 下面是“高拟真交易终端”常见能力，本项目当前的落地情况（仅做标记，便于你后续评估是否实现）。
-
-#### 1.3.1 市场与导航（Market）
-- 🔴 全量市场列表（2000+ symbols）、搜索、筛选（按 quote/base、24h 涨跌、成交额）
-- 🔴 自选/最近交易对（本地持久化）
-- 🔴 多报价资产分组（USDT/BTC/FDUSD...）与快速切换
-
-#### 1.3.2 图表与交易融合（Chart Trading）
-- 🔴 图表叠加：挂单线/止损线/成交标记/均价线
-- 🔴 图表交互：点击盘口价反填、拖拽改单/撤单（可选高级）
-- 🔴 指标/绘图工具体系（若继续走 Lightweight Charts，需要自研补齐；或接入 TradingView）
-
-#### 1.3.3 订单体系（Orders）
-- 🟡 高拟真订单状态（含 PENDING / ACK / PARTIAL / FILLED / CANCELING 等更细状态）
-- 🔴 更完整的订单类型：OCO、止盈止损、Post-only、Reduce-only（现货可选）
-- 🔴 明确的手续费模型（maker/taker、扣费币种、显示预估费用）
-
-#### 1.3.4 数据一致性与健康度（Reliability）
-- 🔴 server time offset / 延迟监控（RTT、消息延迟、丢包/重连次数）
-- 🟡 断线补齐策略统一化（K 线已做；订单簿/成交/ticker 需统一策略）
-- 🔴 订阅健康度/错误可观测性（统一日志与 UI 提示面板）
-
-#### 1.3.5 性能与工程化（Quality）
-- 🟡 Worker 策略统一（目前有多个 Worker/路径，需收敛为清晰架构）
-- 🔴 基础测试体系（Vitest）+ 关键域逻辑回归（撮合/状态机/精度）
-- 🔴 Lint/Build 守门（CI 或至少本地可稳定通过）
+1. **WS 连接分散**: 各模块各自建立连接，缺少统一订阅层
+2. **交易规则硬编码**: `POPULAR_SYMBOLS` 手写，未接入 `exchangeInfo`
+3. **订单状态简陋**: 仅本地模拟，无完整状态机
+4. **Worker 未接入**: 订单簿合并仍在主线程
+5. **历史数据缺失**: RecentTrades 无首屏历史、K线无左侧翻页
 
 ---
 
 ## 二、CEX 交易页核心技术难点
 
-### 2.1 订单簿一致性（🟡 已有基础，但仍需对齐“严格协议”）
+### 2.1 订单簿一致性（已基本解决）
 - 快照 + 增量的序列校验
 - Gap 恢复机制
 - 乱序处理
 - 限频与回补
 
-### 2.2 订单状态一致性（🟡 已有状态机/撮合，但终端级仍需强化）
+### 2.2 订单状态一致性（需重点强化）
 - 下单后的 **乐观 UI vs 服务端权威状态** 冲突
 - 撤单/成交并发更新
 - 完整状态机：`NEW → PARTIAL_FILLED → FILLED | CANCELED | EXPIRED | REJECTED`
@@ -121,14 +103,6 @@
 - tick size / step size / min notional
 - 手续费计算
 - 精度截断（使用 decimal.js）
-
-### 2.6 Public/Private 双平面（🔴 目前缺少 Private 数据平面抽象）
-- Public（行情）与 Private（用户）数据的连接、重连、补齐策略不同
-- CEX 里订单/成交/余额通常由“私有用户数据流”驱动，才能保证一致性与可观测
-
-### 2.7 市场导航与信息密度（🔴 目前缺少终端级市场列表能力）
-- 市场全量列表、搜索、筛选、排序、自选/最近
-- 这是“整页交易终端”的核心入口之一（仅靠热门列表不够拟真）
 
 ---
 
@@ -174,9 +148,6 @@
 ```
 
 ### 3.2 目录结构调整
-
-> 说明：本仓库目前已经落地了 `core/gateway`、`core/config`、`domain/account`、`domain/trading`、`workers` 等关键目录；
-> 下面的结构更多作为“完善方向”参考，其中 `core/normalizer/*`、`SymbolRegistry` 等仍未完全落地。
 
 ```
 src/
@@ -231,21 +202,18 @@ src/
 
 ### Phase 1: 基础设施层 (预计 3-4 天)
 
-#### 1.1 MarketDataHub 统一订阅层（🟡 已落地，待“单 WS”收敛）
+#### 1.1 MarketDataHub 统一订阅层
 
 **目标**: 合并所有 WS 连接，统一管理订阅
-
-**当前落地情况（按现有代码）**:
-- ✅ 已实现 `src/core/gateway/MarketDataHub.ts`（单连接 + SUBSCRIBE/UNSUBSCRIBE + 引用计数）
-- 🟡 图表/成交/ticker 已接入；订单簿目前走 `src/workers/tradingEngine.worker.ts` 自建 WS（因此整页仍是多 WS）
 
 **WS 策略选择**: 
 - ✅ **方案 A: 单连接 + 动态订阅** (`wss://stream.binance.com:9443/ws` + `SUBSCRIBE/UNSUBSCRIBE`)
 - ❌ ~~方案 B: 组合流~~ (切换交易对需重连，不符合目标)
 
-**后续建议变更（尚未完成）**:
-- 🔴 订单簿深度流也统一接入 Hub（Hub 收消息 → Worker 做合并/聚合/节流 → 主线程只渲染）
-- 🟡 `src/services/websocket/manager.ts` 增强连接生命周期（手动断开不重连、退避、错误分类）
+**文件变更**:
+- [NEW] `src/core/gateway/MarketDataHub.ts`
+- [NEW] `src/core/gateway/SubscriptionManager.ts`
+- [MODIFY] `src/features/*/hooks/use*.ts` - 改为调用 MarketDataHub
 
 **核心功能**:
 ```typescript
@@ -287,23 +255,20 @@ class MarketDataHub {
 ```
 
 **验证**:
-- 🔴 目标：浏览器 DevTools Network 面板只有 **1 个 WS 连接**
-- 🟡 现状：通常会看到 **2 个 WS**（Hub 1 个 + orderbook worker 1 个）
+- 浏览器 DevTools Network 面板只有 **1 个 WS 连接**
 - 切换交易对时，**无需重连**，只发送 SUBSCRIBE/UNSUBSCRIBE 消息
 - 控制台打印订阅/取消订阅日志，确认流名称正确
 
 ---
 
-#### 1.2 ExchangeInfo 交易规则集成（✅ 已落地，🔴 SymbolRegistry 未实现）
+#### 1.2 ExchangeInfo 交易规则集成
 
 **目标**: 从 Binance `/api/v3/exchangeInfo` 获取交易对元数据
 
-**当前落地情况（按现有代码）**:
-- ✅ `src/core/config/ExchangeInfo.ts` 已实现（缓存/后台刷新/fallback/搜索），使用 `apiClient` 走 `/api` 代理
-- ✅ `POPULAR_SYMBOLS` 定义在 `ExchangeInfo.ts`（`string[]` 类型），并通过 `core/config/index.ts` 导出
-- ⚠️ `src/features/symbol/atoms/symbolAtom.ts` 仍有独立的 `POPULAR_SYMBOLS`（`SymbolConfig[]` 类型）作为 UI fallback
-- 🟡 存在两处 `POPULAR_SYMBOLS` 定义，类型不同，建议后续统一
-- 🔴 `SymbolRegistry` 未实现（目前可不做，但要在文档里标记为"未落地"）
+**文件变更**:
+- [NEW] `src/core/config/ExchangeInfo.ts`
+- [NEW] `src/core/config/SymbolRegistry.ts`
+- [MODIFY] `src/features/symbol/symbolAtom.ts` - 保留 `POPULAR_SYMBOLS` 作为 fallback
 
 **核心数据结构**:
 ```typescript
@@ -333,9 +298,8 @@ class ExchangeInfoManager {
       return cached.data;
     }
     
-    // 2. 请求 REST API（通过 apiClient 走代理）
-    const response = await apiClient.get('/api/v3/exchangeInfo');
-    const data = response.data;
+    // 2. 请求 REST API
+    const data = await fetch('/api/v3/exchangeInfo').then(r => r.json());
     
     // 3. 保存到缓存（内存 + localStorage）
     this.saveToCache(data);
@@ -365,21 +329,13 @@ class ExchangeInfoManager {
 
 ---
 
-#### 1.3 接入 OrderBook Worker（✅ 已有 Worker，架构已明确）
+#### 1.3 接入 OrderBook Worker
 
 **目标**: 将订单簿增量合并移到 Worker，避免阻塞主线程
 
-**当前落地情况（按现有代码）**:
-- ✅ **主路径**：`src/features/orderbook/hooks/useOrderBook.ts` → `src/hooks/useTradingEngine.ts` → `src/workers/tradingEngine.worker.ts`
-- ⚠️ 存在未使用的 `src/workers/orderbook.worker.ts` + `src/hooks/useOrderBookWorker.ts`（纯合并逻辑，不管理 WS）
-
-**Worker 架构说明**:
-- `tradingEngine.worker.ts`：管理 WS 连接 + 订单簿合并/节流 + gap 检测
-- `orderbook.worker.ts`：仅提供 merge/sort/calculate_stats 功能，**当前未被调用**
-
-**后续建议（尚未完成）**:
-- 🟡 考虑删除 `orderbook.worker.ts` 或明确其用途，避免维护两套 Worker
-- 🔴 严格对齐 Binance diff-depth 同步协议（首包对齐 + 连续性校验 + gap 恢复策略增强）
+**文件变更**:
+- [MODIFY] `src/workers/orderbook.worker.ts` - 增强合并逻辑
+- [MODIFY] `src/features/orderbook/hooks/useOrderBook.ts` - 切换到 Worker
 
 **精度一致性要求**:
 ```typescript
@@ -409,14 +365,14 @@ const sorted = bids.sort((a, b) => b[0].localeCompare(a[0], undefined, { numeric
 
 ### Phase 2: 交易核心层 (预计 4-5 天)
 
-#### 2.1 订单状态机（✅ 已落地）
+#### 2.1 订单状态机
 
 **目标**: 实现完整的订单生命周期管理
 
-**当前落地情况（按现有代码）**:
-- ✅ `src/domain/trading/engine/OrderStateMachine.ts` 已实现
-- ✅ `src/domain/trading/types/*` 已存在，UI 侧通过 `src/features/orders/hooks/useOrders.ts` 做了转换
-- 🟡 仍可增强：更细的中间态（如 PENDING_NEW / CANCELING）、更完整的 rejectReason、以及与“私有流事件模型”的衔接
+**文件变更**:
+- [NEW] `src/domain/trading/engine/OrderStateMachine.ts`
+- [NEW] `src/domain/trading/engine/types.ts`
+- [MODIFY] `src/features/orders/atoms/ordersAtom.ts`
 
 **状态定义**:
 ```typescript
@@ -502,18 +458,13 @@ class OrderValidator {
 
 ---
 
-#### 2.2 本地撮合引擎（🟡 已落地，可继续拟真）
+#### 2.2 本地撮合引擎
 
 **目标**: 根据订单簿模拟订单成交
 
-**当前落地情况（按现有代码）**:
-- ✅ `src/domain/trading/engine/MatchingEngine.ts` 已存在，并支持市价/限价/止损单的基础撮合
-- 🔴 `matching.worker.ts` 未实现（目前也不是必须，除非要做更复杂的逐档吃单/大量挂单/回测）
-
-**建议增强点（尚未完成）**:
-- 🔴 精度与格式化全面依赖 `ExchangeInfo`（pricePrecision/quantityPrecision/tickSize/stepSize），避免硬编码 `toFixed(8)`
-- 🔴 手续费与扣费币种规则更贴近 CEX（maker/taker、扣费资产、显示预估费用）
-- 🔴 撮合与 UI 的事件化：输出“订单回报/成交回报”事件（模拟 Private Data plane）
+**文件变更**:
+- [NEW] `src/domain/trading/engine/MatchingEngine.ts`
+- [NEW] `src/workers/matching.worker.ts`
 
 **撮合策略**:
 
@@ -578,13 +529,13 @@ class MatchingEngine {
 
 ---
 
-#### 2.3 模拟账户系统（✅ 已落地）
+#### 2.3 模拟账户系统
 
 **目标**: 实现余额管理和资产变动
 
-**当前落地情况（按现有代码）**:
-- ✅ `src/domain/account/balanceAtom.ts` 已实现 free/locked、冻结/解冻、成交入账、重置/充值等
-- 🟡 `src/components/trading/AssetPanel.tsx` 已展示模拟资产（后续可增强：展示冻结、收益、折算等）
+**文件变更**:
+- [NEW] `src/domain/account/atoms/balanceAtom.ts`
+- [MODIFY] `src/components/trading/AssetPanel.tsx`
 
 **核心功能**:
 - 初始化模拟资产（如 10000 USDT, 1 BTC）
@@ -596,7 +547,7 @@ class MatchingEngine {
 
 ### Phase 3: 数据增强层 (预计 2-3 天)
 
-#### 3.1 历史数据加载（✅ 已落地）
+#### 3.1 历史数据加载
 
 **目标**: 完善首屏数据和分页加载
 
@@ -610,13 +561,13 @@ class MatchingEngine {
 
 ---
 
-#### 3.2 精度处理封装（✅ 已落地，🟡 仍需“全局替换”）
+#### 3.2 精度处理封装
 
 **目标**: 使用 decimal.js 处理所有金额计算
 
-**当前落地情况（按现有代码）**:
-- ✅ 已有 `src/utils/decimal.ts`
-- 🟡 仍存在一些散落的 `parseFloat/toFixed`（建议逐步替换为 `Decimal` 或 `utils/decimal`）
+**文件变更**:
+- [NEW] `src/utils/decimal.ts`
+- [MODIFY] 所有涉及金额计算的文件
 
 **验证**:
 - `0.1 + 0.2` 不再出现精度问题
@@ -625,7 +576,7 @@ class MatchingEngine {
 
 ### Phase 4: 性能优化层 (预计 2 天)
 
-#### 4.1 虚拟列表（✅ 已落地）
+#### 4.1 虚拟列表
 
 **目标**: 订单簿和成交列表使用虚拟滚动
 
@@ -637,14 +588,115 @@ class MatchingEngine {
 
 ---
 
-#### 4.2 渲染节流（🟡 已有基础，仍可统一）
+#### 4.2 渲染节流
 
-**当前落地情况（按现有代码）**:
-- 🟡 K 线：`useKlineData` 已用 `requestAnimationFrame` 合并更新
-- 🟡 订单簿：`tradingEngine.worker.ts` 有节流（`THROTTLE_MS`）
+**目标**: 高频更新时批量合并渲染
 
-**建议补齐（尚未完成）**:
-- 🔴 抽象统一的“更新调度器”（raf/batch），对 ticker/trades/orderbook 等都采用一致的节流策略
+**实现方式**:
+- requestAnimationFrame 节流
+- 16ms 内多次更新只渲染一次
+
+---
+
+### Phase 5: 交易所闭环补齐（新增，预计 7-10 天）
+
+#### 5.1 生命周期时间线 + 账务分录（可解释模拟）
+
+**目标**: 把“下单→风控→撮合→成交→清算→账务”变成可回放事件流，而不是散落在各模块里的隐式更新。
+
+**文件变更**:
+- [NEW] `src/domain/exchange/lifecycle/types.ts`
+- [NEW] `src/domain/exchange/lifecycle/lifecycleAtom.ts`
+- [NEW] `src/domain/exchange/ledger/ledgerAtom.ts`
+- [NEW] `src/features/exchange/components/OrderLifecycleTimeline.tsx`
+
+**核心要求**:
+- 每笔订单生成 `eventId`、`orderId`、`timestamp`、`payload`。
+- 每次资产变化必须对应至少 1 条账务分录（如：冻结、解冻、成交、手续费）。
+- UI 可按订单查看完整事件链路。
+
+---
+
+#### 5.2 账户体系双模式（可解释模拟）
+
+**目标**: 在当前 `free/locked` 基础上扩展统一账户与经典账户。
+
+**文件变更**:
+- [NEW] `src/domain/account/models/accountMode.ts`
+- [MODIFY] `src/domain/account/balanceAtom.ts`
+- [NEW] `src/features/account/components/AccountModePanel.tsx`
+
+**模式字段建议**:
+- 经典账户: `spotFree`, `spotLocked`
+- 统一账户: `walletBalance`, `equity`, `initialMargin`, `maintenanceMargin`, `unrealizedPnl`
+
+---
+
+#### 5.3 风控规则引擎（可解释模拟 + 真实执行契约）
+
+**目标**: 将当前校验升级为可扩展规则引擎，并保留后端接入边界。
+
+**文件变更**:
+- [NEW] `src/domain/risk/RiskService.ts`（接口）
+- [NEW] `src/domain/risk/MockRiskService.ts`（前端实现）
+- [MODIFY] `src/domain/trading/hooks/useTradingService.ts`
+
+**首批规则**:
+- 最小名义价值（minNotional）
+- 价格偏离保护（偏离阈值）
+- 余额与冻结校验
+- 下单频率限制（单位时间订单数）
+- 账户等级限制（KYC/账户模式联动）
+
+---
+
+#### 5.4 费率产品化（可解释模拟）
+
+**目标**: 把固定费率改成配置化费率引擎。
+
+**文件变更**:
+- [NEW] `src/domain/fee/FeeEngine.ts`
+- [NEW] `src/domain/fee/feeConfigAtom.ts`
+- [MODIFY] `src/domain/trading/engine/MatchingEngine.ts`
+- [MODIFY] `src/features/orders/components/TradeHistory.tsx`
+
+**费率维度**:
+- maker / taker
+- VIP 等级
+- 平台币抵扣开关（仅模拟）
+- 手续费明细解释（来源规则 + 折扣结果）
+
+---
+
+#### 5.5 现货杠杆最小闭环（可解释模拟）
+
+**目标**: 实现学习项目所需的现货杠杆核心链路。
+
+**文件变更**:
+- [NEW] `src/domain/margin/marginEngine.ts`
+- [NEW] `src/features/margin/components/MarginPanel.tsx`
+- [NEW] `src/features/margin/atoms/marginAtom.ts`
+
+**闭环范围**:
+- 借币/还币
+- 利息累积（按小时模拟）
+- 保证金率计算
+- 风险预警（不做真实强平执行）
+
+---
+
+#### 5.6 合约简化版（可选挑战）
+
+**目标**: 如果时间允许，增加最小合约仓位模型。
+
+**文件变更**:
+- [NEW] `src/domain/futures/futuresEngine.ts`
+- [NEW] `src/features/futures/components/FuturesPanel.tsx`
+
+**最小功能**:
+- 开仓/平仓（模拟）
+- 仓位未实现盈亏（Mark Price）
+- 保证金率与预估强平价
 
 ---
 
@@ -656,44 +708,52 @@ class MatchingEngine {
 ### 手动验证 Checklist
 
 #### Phase 1 验证
-- [ ] 目标：浏览器 Network 面板只有 1 个 WS 连接（现状通常为 2 个）
-- [ ] 切换交易对后，订阅正确更新（无残留订阅；尤其是 orderbook 链路）
-- [x] ExchangeInfo 可加载并缓存（刷新后多数情况下走缓存）
-- [ ] 交易对全量搜索可用（基于 ExchangeInfo，而不是仅热门列表）
-- [ ] WS Manager 支持“手动断开不重连”等边界，状态/日志清晰
+- [ ] 浏览器 Network 面板只有 1 个 WS 连接
+- [ ] 切换交易对后，订阅正确更新（无残留订阅）
+- [ ] 交易对搜索可用，显示 tick/step 信息
+- [ ] 订单簿高频更新时无卡顿（Chrome Performance）
 
 #### Phase 2 验证
-- [x] 市价买单可立即成交（逐档吃单/滑点拟真可选增强）
-- [x] 限价单可挂单/触发成交（细节拟真度可增强）
-- [x] 撤单后订单状态更新，资产解冻/解锁
-- [x] 成交后余额正确变动（free/locked + 扣费）
-- [ ] 订单/成交/余额改为事件化（模拟 Private Data plane），支持断线重放/回滚（拟真关键）
+- [ ] 市价买单以卖一价立即成交
+- [ ] 限价买单高于卖一价立即成交
+- [ ] 限价买单低于卖一价进入挂单列表
+- [ ] 撤单后订单状态变为 CANCELED，资产解冻
+- [ ] 成交后余额正确变动
 
 #### Phase 3 验证
-- [x] RecentTrades 首屏有历史数据
-- [x] K线图向左拖动可加载更多数据
-- [x] 金额计算避免浮点精度问题（已引入 `src/utils/decimal.ts`）
-- [ ] 全局替换散落的 `parseFloat/toFixed`，统一精度/格式化策略
+- [ ] RecentTrades 首屏有历史数据
+- [ ] K线图向左拖动可加载更多数据
+- [ ] 金额计算无精度问题（如 0.1 + 0.2 = 0.3）
 
 #### Phase 4 验证
-- [x] 订单簿/成交列表使用虚拟滚动，长列表滚动流畅
-- [ ] 高频更新时 FPS >= 55（需要统一节流/Worker 策略与性能基准测试）
+- [ ] 订单簿 1000 条数据滚动流畅
+- [ ] 高频更新时 FPS >= 55
+
+#### Phase 5 验证
+- [ ] 每笔订单都有完整生命周期事件链路（可追溯）
+- [ ] 每次资产变动都能在账务分录中定位来源
+- [ ] 账户可在“经典/统一”模式间切换并显示对应指标
+- [ ] 风控拒单可解释（规则命中 + 原因）
+- [ ] 费率计算可解释（maker/taker、VIP、折扣）
+- [ ] 现货杠杆可跑通借币→交易→还币流程
 
 ---
 
 ## 六、优先级排序
 
-| 优先级 | 任务 | 预计时间 | 依赖 |
-|-------|------|---------|------|
-| P0 🔴 | 单 WS 收敛：订单簿也统一到 MarketDataHub/统一 Worker | 2 天 | MarketDataHub |
-| P0 🔴 | 订单簿严格同步协议（diff-depth 首包对齐 + 连续性校验 + gap 恢复） | 1-2 天 | 单 WS 收敛 |
-| P0 🔴 | 市场列表（全量搜索/筛选/自选/最近） | 1-2 天 | ExchangeInfo |
-| P0 🔴 | 工程守门：`pnpm build`/`pnpm lint` 可稳定通过（可加 CI） | 0.5-1 天 | 无 |
-| P1 🟡 | Private Data plane 事件模型（模拟用户数据流：订单回报/成交回报/余额变更） | 2-3 天 | 订单状态机/撮合 |
-| P1 🟡 | 图表与交易融合（订单线/成交标记/止损线） | 2-4 天 | 订单体系 |
-| P2 🟢 | 全局精度/格式化统一（替换散落的 parseFloat/toFixed） | 1 天 | ExchangeInfo |
-| P2 🟢 | 性能基准与节流统一（raf/batch、Worker 策略收敛） | 1-2 天 | 无 |
-| P2 🟢 | 最小测试体系（Vitest：状态机/撮合/精度/聚合） | 1-2 天 | 无 |
+| 优先级 | 任务 | 类型 | 预计时间 | 依赖 |
+|-------|------|------|---------|------|
+| P0 🔴 | 生命周期事件流 + 账务分录 | 可解释模拟 | 2 天 | 订单状态机 |
+| P0 🔴 | 账户体系双模式（统一/经典） | 可解释模拟 | 2 天 | 模拟账户系统 |
+| P0 🔴 | 风控规则引擎（含可解释拒单） | 可解释模拟 + 真实执行契约 | 1.5 天 | 订单状态机 |
+| P0 🔴 | 费率引擎（maker/taker + VIP） | 可解释模拟 | 1 天 | 撮合引擎 |
+| P1 🟡 | 现货杠杆最小闭环 | 可解释模拟 | 2 天 | 账户体系双模式 |
+| P1 🟡 | MarketDataHub 统一订阅层 | 可解释模拟 | 2 天 | 无 |
+| P1 🟡 | ExchangeInfo 集成 | 可解释模拟 | 1 天 | 无 |
+| P1 🟡 | 接入 OrderBook Worker | 可解释模拟 | 1 天 | 无 |
+| P2 🟢 | 本地撮合引擎增强（逐档/滑点） | 可解释模拟 | 2 天 | 订单状态机 |
+| P2 🟢 | 历史数据加载 + 虚拟列表 + 节流 | 可解释模拟 | 2.5 天 | 无 |
+| P3 ⚪ | 合约简化版 | 可解释模拟 | 2-3 天 | 现货杠杆 |
 
 ---
 
@@ -713,18 +773,30 @@ Binance REST API 限流 1200 请求/分钟，需注意：
 - ticker 价格与 orderbook 买一卖一可能有微小差异
 - 建议 UI 上做容错处理（允许 0.1% 误差）
 
+### 7.4 真实执行边界（新增）
+以下能力仅做接口契约，不在前端执行：
+- 真实签名下单与撤单（需要服务端密钥管理）
+- 权威清算与总账入库（需要后端事务一致性）
+- 真实风控策略引擎（需要全局账户与行为数据）
+- 出入金、钱包、多签与审核流（需要链上与运营系统）
+
+**前端策略**:
+- 通过 `Service Interface + MockAdapter` 先完成可解释模拟
+- 后续接后端时只替换 Adapter，不改 UI 与领域模型
+
 ---
 
 ## 八、里程碑
 
 | 里程碑 | 完成标志 | 预计时间 |
 |-------|---------|---------|
-| M0（已完成） | 交易页基础模块齐全（图表/盘口/成交/下单/订单/资产） | - |
-| M1（已完成） | ExchangeInfo 可用（缓存 + fallback） | - |
-| M2（进行中） | MarketDataHub 覆盖所有行情链路（目标：单 WS） | - |
-| M3（待办） | 市场列表（全量搜索/自选/最近）上线 | - |
-| M4（待办） | Private Data plane 事件化（高拟真订单/成交/余额一致性） | - |
-| M5（待办） | Chart Trading（订单线/成交标记/止损线）上线 | - |
+| M1 | MarketDataHub 上线，单一 WS 连接 | Day 2 |
+| M2 | 交易规则动态加载，下单校验完整 | Day 3 |
+| M3 | 生命周期时间线 + 账务分录可追溯 | Day 5 |
+| M4 | 账户体系支持统一/经典双模式 | Day 7 |
+| M5 | 风控可解释拒单 + 费率引擎上线 | Day 8 |
+| M6 | 现货杠杆最小闭环可演示 | Day 10 |
+| M7 | 性能优化与体验收敛完成 | Day 11-12 |
 
 ---
 

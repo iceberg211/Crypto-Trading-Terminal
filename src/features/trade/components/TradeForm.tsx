@@ -4,6 +4,7 @@ import { useTradeForm } from '../hooks/useTradeForm';
 import { OrderType } from '../atoms/tradeAtom';
 import { showOrderConfirmationAtom } from '../atoms/settingsAtom';
 import { TradeConfirmationModal } from './TradeConfirmationModal';
+import { FeePreview } from './FeePreview';
 import Decimal from 'decimal.js';
 
 // 订单类型选择器
@@ -19,18 +20,17 @@ function OrderTypeSelector({
     { value: 'market', label: '市价' },
     { value: 'stop_limit', label: '止损限价' },
   ];
-  
+
   return (
     <div className="flex gap-1 p-1 bg-bg-panel border border-line-dark rounded-sm">
       {types.map((t) => (
         <button
           key={t.value}
           onClick={() => onSelect(t.value)}
-          className={`flex-1 h-7 text-xs rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${
-            selected === t.value
+          className={`flex-1 h-7 text-xs rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${selected === t.value
               ? 'bg-bg-soft text-text-primary font-medium'
               : 'text-text-tertiary hover:text-text-secondary hover:bg-bg-soft/40'
-          }`}
+            }`}
         >
           {t.label}
         </button>
@@ -48,18 +48,17 @@ function PercentageButtons({
   onSelect: (p: number) => void;
 }) {
   const percentages = [25, 50, 75, 100];
-  
+
   return (
     <div className="grid grid-cols-4 gap-1.5">
       {percentages.map((p) => (
         <button
           key={p}
           onClick={() => onSelect(p)}
-          className={`h-7 text-xxs rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${
-            selected === p
+          className={`h-7 text-xxs rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${selected === p
               ? 'border-accent/70 text-accent bg-accent/15'
               : 'border-line-dark text-text-secondary hover:text-text-primary hover:bg-bg-soft/40'
-          }`}
+            }`}
         >
           {p}%
         </button>
@@ -87,7 +86,7 @@ export function TradeForm() {
 
   const showConfirmation = useAtomValue(showOrderConfirmationAtom);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
-  
+
   const availableBalance = form.side === 'buy' ? balance.USDT : balance.BTC;
   const balanceUnit = form.side === 'buy' ? 'USDT' : 'BTC';
   const isMarketOrder = form.type === 'market';
@@ -112,21 +111,19 @@ export function TradeForm() {
       <div className="flex border-b border-line-dark bg-bg-panel h-8">
         <button
           onClick={() => setSide('buy')}
-          className={`flex-1 text-xs font-semibold transition-colors border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${
-            form.side === 'buy' 
-              ? 'border-up text-up bg-up-bg/50' 
+          className={`flex-1 text-xs font-semibold transition-colors border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${form.side === 'buy'
+              ? 'border-up text-up bg-up-bg/50'
               : 'border-transparent text-text-secondary hover:text-text-primary'
-          }`}
+            }`}
         >
           买入
         </button>
         <button
           onClick={() => setSide('sell')}
-          className={`flex-1 text-xs font-semibold transition-colors border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${
-            form.side === 'sell' 
-              ? 'border-down text-down bg-down-bg/50' 
+          className={`flex-1 text-xs font-semibold transition-colors border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${form.side === 'sell'
+              ? 'border-down text-down bg-down-bg/50'
               : 'border-transparent text-text-secondary hover:text-text-primary'
-          }`}
+            }`}
         >
           卖出
         </button>
@@ -228,6 +225,14 @@ export function TradeForm() {
             <span className="absolute right-3 top-2 text-xs text-text-tertiary pointer-events-none">USDT</span>
           </div>
         </div>
+
+        {/* Fee Preview */}
+        <FeePreview
+          price={form.price}
+          quantity={form.amount}
+          side={form.side}
+          isMarketOrder={isMarketOrder}
+        />
       </div>
 
       {/* Submit Button */}
@@ -235,11 +240,10 @@ export function TradeForm() {
         <button
           disabled={!validation.isValid || submitting}
           onClick={handlePreSubmit}
-          className={`w-full h-9 rounded-sm text-sm font-bold text-white transition-colors active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${
-            form.side === 'buy' 
-              ? 'bg-up hover:bg-up-light' 
+          className={`w-full h-9 rounded-sm text-sm font-bold text-white transition-colors active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 ${form.side === 'buy'
+              ? 'bg-up hover:bg-up-light'
               : 'bg-down hover:bg-down-light'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
         >
           {submitting ? '处理中…' : (
             form.side === 'buy' ? '买入 BTC' : '卖出 BTC'
@@ -248,7 +252,7 @@ export function TradeForm() {
       </div>
 
       {/* Confirmation Modal */}
-      <TradeConfirmationModal 
+      <TradeConfirmationModal
         isOpen={isConfirmationOpen}
         onClose={() => setIsConfirmationOpen(false)}
         onConfirm={handleConfirmSubmit}

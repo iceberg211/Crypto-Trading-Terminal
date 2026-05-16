@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { useNetworkStatus } from '@/core/gateway/useNetworkStatus';
 
 /**
  * 网络状态提示栏
