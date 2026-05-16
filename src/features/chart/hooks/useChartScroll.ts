@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState, MutableRefObject } from 'react';
 import { IChartApi, LogicalRange } from 'lightweight-charts';
 import { CHART_THRESHOLDS } from '../constants/chartConfig';
+import { logger } from '@/utils/logger';
 
 interface UseChartScrollOptions {
   chart: MutableRefObject<IChartApi | null>;
@@ -79,7 +80,7 @@ export function useChartScroll({
         const timeSinceLastLoad = now - lastLoadMoreTimeRef.current;
 
         if (isAtLeftEdge && timeSinceLastLoad > CHART_THRESHOLDS.loadMoreDebounce) {
-          console.log('[useChartScroll] 加载更多数据…');
+          logger.debug('[useChartScroll] 加载更多数据…');
           isLoadingMoreRef.current = true;
           lastLoadMoreTimeRef.current = now;
 
@@ -91,11 +92,11 @@ export function useChartScroll({
     };
 
     chartInstance.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-    console.log('[useChartScroll] Subscribed to visible range changes');
+    logger.debug('[useChartScroll] Subscribed to visible range changes');
 
     return () => {
       chartInstance.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-      console.log('[useChartScroll] Unsubscribed from visible range changes');
+      logger.debug('[useChartScroll] Unsubscribed from visible range changes');
     };
   }, [chart, dataLength, autoScrollRef, subscribeVersion]);
 

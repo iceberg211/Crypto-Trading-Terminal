@@ -1,6 +1,6 @@
 import { useAtomValue } from 'jotai';
 import { useRef } from 'react';
-import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { tickerAtom } from '@/features/ticker/atoms/tickerAtom';
 import { useTicker } from '@/features/ticker/hooks/useTicker';
 import { SymbolSelector } from '@/features/symbol/components/SymbolSelector';

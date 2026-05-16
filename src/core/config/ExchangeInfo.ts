@@ -3,14 +3,15 @@
  * 负责获取、缓存和管理 Binance 交易规则
  */
 
-import type { 
-  BinanceSymbolInfo, 
-  ExchangeInfoResponse, 
-  SymbolConfig, 
+import type {
+  BinanceSymbolInfo,
+  ExchangeInfoResponse,
+  SymbolConfig,
   CachedExchangeInfo,
-  SymbolFilter 
+  SymbolFilter
 } from './types';
 import { runtimeConfig } from './runtime';
+import { logger } from '@/utils/logger';
 
 // 缓存配置
 const CACHE_KEY = 'binance_exchange_info';
@@ -76,23 +77,23 @@ class ExchangeInfoService {
       // 1. 尝试从 localStorage 加载缓存
       const cached = this.loadFromCache();
       if (cached) {
-        console.log('[ExchangeInfo] Loaded from cache:', cached.length, 'symbols');
+        logger.debug('[ExchangeInfo] Loaded from cache:', cached.length, 'symbols');
         this.populateSymbols(cached);
-        
+
         // 检查是否需要后台刷新
         if (this.isCacheStale()) {
-          console.log('[ExchangeInfo] Cache is stale, refreshing in background...');
-          this.fetchAndCache().catch(console.error);
+          logger.debug('[ExchangeInfo] Cache is stale, refreshing in background...');
+          this.fetchAndCache().catch((error) => logger.warn('[ExchangeInfo] Background refresh failed:', error));
         }
         return;
       }
 
       // 2. 缓存无效，从 API 加载
-      console.log('[ExchangeInfo] No valid cache, fetching from API...');
+      logger.debug('[ExchangeInfo] No valid cache, fetching from API...');
       await this.fetchAndCache();
 
     } catch (error) {
-      console.error('[ExchangeInfo] Failed to load:', error);
+      logger.error('[ExchangeInfo] Failed to load:', error);
       
       // 3. 失败时使用 fallback
       this.loadFallback();
@@ -113,13 +114,13 @@ class ExchangeInfoService {
       
       // 验证版本和时间
       if (cached.metadata.version !== CACHE_VERSION) {
-        console.log('[ExchangeInfo] Cache version mismatch');
+        logger.debug('[ExchangeInfo] Cache version mismatch');
         return null;
       }
 
       const age = Date.now() - cached.metadata.timestamp;
       if (age > CACHE_TTL_MS) {
-        console.log('[ExchangeInfo] Cache expired');
+        logger.debug('[ExchangeInfo] Cache expired');
         return null;
       }
 
@@ -127,7 +128,7 @@ class ExchangeInfoService {
       return cached.symbols;
 
     } catch (error) {
-      console.error('[ExchangeInfo] Failed to parse cache:', error);
+      logger.warn('[ExchangeInfo] Failed to parse cache:', error);
       return null;
     }
   }
@@ -150,7 +151,7 @@ class ExchangeInfoService {
     }
 
     const data: ExchangeInfoResponse = await response.json();
-    console.log('[ExchangeInfo] Fetched from API:', data.symbols.length, 'symbols');
+    logger.debug('[ExchangeInfo] Fetched from API:', data.symbols.length, 'symbols');
 
     // 只保留现货交易对
     const spotSymbols = data.symbols.filter(
@@ -227,9 +228,9 @@ class ExchangeInfoService {
         symbols,
       };
       localStorage.setItem(CACHE_KEY, JSON.stringify(cached));
-      console.log('[ExchangeInfo] Saved to cache');
+      logger.debug('[ExchangeInfo] Saved to cache');
     } catch (error) {
-      console.error('[ExchangeInfo] Failed to save cache:', error);
+      logger.warn('[ExchangeInfo] Failed to save cache:', error);
     }
   }
 
@@ -237,7 +238,7 @@ class ExchangeInfoService {
    * 使用 fallback 数据
    */
   private loadFallback(): void {
-    console.log('[ExchangeInfo] Using fallback data');
+    logger.debug('[ExchangeInfo] Using fallback data');
     
     const fallbackSymbols: SymbolConfig[] = POPULAR_SYMBOLS.map(symbol => ({
       symbol,

@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef, memo, CSSProperties } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import { useAtomValue } from 'jotai';
-import { symbolAtom } from '@/features/chart/atoms/klineAtom';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { marketDataHub } from '@/core/gateway';
 import { runtimeConfig } from '@/core/config/runtime';
 import { formatPrice, formatQuantity } from '@/utils/decimal';
+import { logger } from '@/utils/logger';
 import { ConnectionStatus, type ConnectionState } from '@/components/ui/ConnectionStatus';
 import dayjs from 'dayjs';
 
@@ -56,7 +57,8 @@ const TradeRow = memo(function TradeRow({
  * 使用 MarketDataHub 统一订阅层 + 首屏历史数据加载 + 虚拟列表
  */
 export function RecentTrades() {
-  const symbol = useAtomValue(symbolAtom);
+  const symbolConfig = useAtomValue(symbolConfigAtom);
+  const { symbol, baseAsset, quoteAsset, pricePrecision, quantityPrecision } = symbolConfig;
   const [trades, setTrades] = useState<TradeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [wsStatus, setWsStatus] = useState<ConnectionState>('disconnected');
@@ -105,12 +107,12 @@ export function RecentTrades() {
 
       setTrades(historicalTrades);
       initializedRef.current = true;
-      console.log(`[RecentTrades] Loaded ${historicalTrades.length} historical trades for ${sym}`);
+      logger.debug(`[RecentTrades] Loaded ${historicalTrades.length} historical trades for ${sym}`);
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        console.error('[RecentTrades] Request timeout');
+        logger.warn('[RecentTrades] Request timeout');
       } else {
-        console.error('[RecentTrades] Failed to load historical trades:', err);
+        logger.warn('[RecentTrades] Failed to load historical trades:', err);
       }
       // 即使失败也结束 loading 状态
     } finally {
@@ -180,14 +182,6 @@ export function RecentTrades() {
     return () => observer.disconnect();
   }, []);
 
-  // 从 symbol 中提取 base/quote
-  const baseAsset = symbol.replace(/USDT$|BUSD$|BTC$/, '');
-  const quoteAsset = symbol.includes('USDT') ? 'USDT' : symbol.includes('BUSD') ? 'BUSD' : 'BTC';
-
-  // 价格和数量精度
-  const pricePrecision = quoteAsset === 'USDT' ? 2 : 8;
-  const qtyPrecision = 4;
-
   return (
     <div className="flex flex-col h-full min-h-0 bg-bg-card">
       {/* Header */}
@@ -222,7 +216,7 @@ export function RecentTrades() {
             itemCount={trades.length}
             itemSize={ROW_HEIGHT}
             width="100%"
-            itemData={{ trades, pricePrecision, qtyPrecision }}
+            itemData={{ trades, pricePrecision, qtyPrecision: quantityPrecision }}
             className="scrollbar-thin"
           >
             {({ index, style, data }) => (

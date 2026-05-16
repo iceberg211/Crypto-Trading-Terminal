@@ -2,9 +2,9 @@ import { atom } from 'jotai';
 import type { Candle, KlineInterval } from '@/types/binance';
 
 /**
- * 当前交易对 (Re-export from symbol feature)
+ * 当前交易对
  */
-export { symbolAtom } from '@/features/symbol/atoms/symbolAtom';
+export { symbolAtom } from '@/domain/symbol';
 
 /**
  * 当前时间周期

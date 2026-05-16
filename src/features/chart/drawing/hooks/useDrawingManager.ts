@@ -8,6 +8,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { DrawingManager } from '../core/DrawingManager';
 import type { Drawing } from '../core/types';
+import { logger } from '@/utils/logger';
 
 interface UseDrawingManagerOptions {
   chartRef: React.MutableRefObject<IChartApi | null>;
@@ -29,7 +30,7 @@ export function useDrawingManager({ chartRef, seriesRef }: UseDrawingManagerOpti
     setDrawings([]);
     boundChartRef.current = null;
     boundSeriesRef.current = null;
-    console.log('[useDrawingManager] Manager destroyed');
+    logger.debug('[useDrawingManager] Manager destroyed');
   }, []);
 
   const createManager = useCallback((chart: IChartApi, series: ISeriesApi<'Candlestick'>) => {
@@ -41,7 +42,7 @@ export function useDrawingManager({ chartRef, seriesRef }: UseDrawingManagerOpti
     setManager(newManager);
     boundChartRef.current = chart;
     boundSeriesRef.current = series;
-    console.log('[useDrawingManager] Manager created');
+    logger.debug('[useDrawingManager] Manager created');
   }, []);
 
   // 监听 chart/series 变化，自动重新绑定

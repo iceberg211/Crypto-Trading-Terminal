@@ -3,6 +3,7 @@ import { useAtom } from 'jotai';
 import Decimal from 'decimal.js';
 import { ordersLoadingAtom } from '../atoms/orderAtom';
 import { useTradingService } from '@/domain/trading';
+import { logger } from '@/utils/logger';
 import type { Order as DomainOrder, OrderResponse } from '@/domain/trading/types';
 
 // 兼容旧的 Order 接口
@@ -193,7 +194,7 @@ export function useOrders() {
   const simulateFill = useCallback(
     async (_orderId: string, _fillAmount?: string): Promise<boolean> => {
       // MatchingEngine 自动处理成交，此方法仅为接口兼容
-      console.warn('[useOrders] simulateFill is deprecated, use MatchingEngine auto-matching');
+      logger.warn('[useOrders] simulateFill is deprecated, use MatchingEngine auto-matching');
       return false;
     },
     []

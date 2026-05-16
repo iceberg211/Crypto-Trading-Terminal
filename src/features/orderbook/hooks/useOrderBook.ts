@@ -14,6 +14,7 @@ import {
 import { binanceApi } from '@/core/api/binance';
 import { marketDataHub } from '@/core/gateway';
 import { useOrderBookEngine } from './useOrderBookEngine';
+import { logger } from '@/utils/logger';
 import type { HubWsStatus } from '@/workers/types';
 
 /**
@@ -52,7 +53,7 @@ export function useOrderBook() {
   const initOrderBook = useCallback(async () => {
     const requestId = ++loadRequestIdRef.current;
     try {
-      console.log('[OrderBook] Fetching snapshot for', symbol);
+      logger.debug('[OrderBook] Fetching snapshot for', symbol);
       setSyncStatus('syncing');
       const snapshot = await binanceApi.getOrderBook(symbol, 1000);
 
@@ -67,10 +68,10 @@ export function useOrderBook() {
         asks: snapshot.asks,
       });
       
-      console.log('[OrderBook] Snapshot sent to worker, lastUpdateId:', snapshot.lastUpdateId);
+      logger.debug('[OrderBook] Snapshot sent to worker, lastUpdateId:', snapshot.lastUpdateId);
     } catch (err) {
       if (requestId !== loadRequestIdRef.current) return;
-      console.error('[OrderBook] Snapshot failed', err);
+      logger.warn('[OrderBook] Snapshot failed', err);
       setError('初始化订单簿失败');
       setSyncStatus('uninitialized');
       setLoading(false);

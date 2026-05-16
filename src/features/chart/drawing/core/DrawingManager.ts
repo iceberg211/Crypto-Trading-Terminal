@@ -8,6 +8,7 @@ import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { Drawing, DrawingPoint, DrawingStyle } from './types';
 import { DEFAULT_STYLES } from './types';
 import { DrawingRenderer } from './DrawingRenderer';
+import { logger } from '@/utils/logger';
 
 export class DrawingManager {
   private renderer: DrawingRenderer;
@@ -58,7 +59,7 @@ export class DrawingManager {
     this.onDrawingAdded?.(drawing);
     this.notifyChange();
     
-    console.log('[DrawingManager] Added horizontal line:', id, 'at price:', price);
+    logger.debug('[DrawingManager] Added horizontal line:', id, 'at price:', price);
     return id;
   }
 
@@ -83,7 +84,7 @@ export class DrawingManager {
     this.onDrawingAdded?.(drawing);
     this.notifyChange();
     
-    console.log('[DrawingManager] Added trend line:', id);
+    logger.debug('[DrawingManager] Added trend line:', id);
     return id;
   }
 
@@ -108,7 +109,7 @@ export class DrawingManager {
     this.onDrawingAdded?.(drawing);
     this.notifyChange();
     
-    console.log('[DrawingManager] Added fibonacci:', id);
+    logger.debug('[DrawingManager] Added fibonacci:', id);
     return id;
   }
 
@@ -132,7 +133,7 @@ export class DrawingManager {
     this.onDrawingRemoved?.(id);
     this.notifyChange();
     
-    console.log('[DrawingManager] Removed drawing:', id);
+    logger.debug('[DrawingManager] Removed drawing:', id);
     return true;
   }
 
@@ -153,7 +154,7 @@ export class DrawingManager {
     for (const id of ids) {
       this.removeDrawing(id);
     }
-    console.log('[DrawingManager] Removed all drawings');
+    logger.debug('[DrawingManager] Removed all drawings');
   }
 
   /**
@@ -183,6 +184,6 @@ export class DrawingManager {
   destroy(): void {
     this.renderer.destroy();
     this.drawings.clear();
-    console.log('[DrawingManager] Destroyed');
+    logger.debug('[DrawingManager] Destroyed');
   }
 }

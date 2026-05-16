@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { logger } from '@/utils/logger';
 import type {
   BinanceKlineResponse,
   Candle,
@@ -41,7 +42,7 @@ class BinanceApi {
 
       return this.normalizeKlines(response.data);
     } catch (error) {
-      console.error('获取 K 线数据失败:', error);
+      logger.warn('获取 K 线数据失败:', error);
       throw error;
     }
   }
@@ -60,7 +61,7 @@ class BinanceApi {
 
       return response.data;
     } catch (error) {
-      console.error('获取订单簿失败:', error);
+      logger.warn('获取订单簿失败:', error);
       throw error;
     }
   }
@@ -85,7 +86,7 @@ class BinanceApi {
         isBuyerMaker: trade.isBuyerMaker,
       }));
     } catch (error) {
-      console.error('获取成交记录失败:', error);
+      logger.warn('获取成交记录失败:', error);
       throw error;
     }
   }
@@ -101,7 +102,7 @@ class BinanceApi {
       });
       return response.data;
     } catch (error) {
-      console.error('获取 24h Ticker 失败:', error);
+      logger.warn('获取 24h Ticker 失败:', error);
       throw error;
     }
   }

@@ -3,4 +3,5 @@
  */
 
 export * from './types';
+export * from './accountStorage';
 export * from './balanceAtom';

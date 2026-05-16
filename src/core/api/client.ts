@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { runtimeConfig } from '@/core/config/runtime';
+import { logger } from '@/utils/logger';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -31,7 +32,7 @@ class ApiClient {
       (error) => {
         // 处理 429 限流
         if (error.response?.status === 429) {
-          console.error('API 请求过多，请稍后重试');
+          logger.warn('API 请求过多，请稍后重试');
         }
         return Promise.reject(error);
       }

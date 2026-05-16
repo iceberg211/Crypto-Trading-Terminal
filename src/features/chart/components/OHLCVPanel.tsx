@@ -1,6 +1,6 @@
 import { useAtomValue } from 'jotai';
 import { crosshairDataAtom } from '../atoms/crosshairAtom';
-import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { formatPrice as formatPriceUtil, formatQuantity } from '@/utils/decimal';
 
 /**

@@ -7,6 +7,8 @@ import Decimal from 'decimal.js';
 import { OrderStateMachine } from './OrderStateMachine';
 import { OrderValidator } from './OrderValidator';
 import { calculateFillFee } from './feePolicy';
+import { resolveSymbolAssets } from '@/domain/symbol';
+import { logger } from '@/utils/logger';
 import type { 
   Order, 
   NewOrderRequest, 
@@ -60,9 +62,9 @@ export class MatchingEngine {
         this.tradeIdCounter = data.tradeIdCounter;
       }
       
-      console.log(`[MatchingEngine] State loaded. ${this.activeOrders.size} active orders.`);
+      logger.debug(`[MatchingEngine] State loaded. ${this.activeOrders.size} active orders.`);
     } catch (e) {
-      console.error('[MatchingEngine] Failed to load state', e);
+      logger.warn('[MatchingEngine] Failed to load state', e);
     }
   }
 
@@ -82,7 +84,7 @@ export class MatchingEngine {
 
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
-      console.error('[MatchingEngine] Failed to save state', e);
+      logger.warn('[MatchingEngine] Failed to save state', e);
     }
   }
 
@@ -152,7 +154,7 @@ export class MatchingEngine {
       this.activeOrders.set(executedOrder.orderId, executedOrder);
     }
 
-    console.log(`[MatchingEngine] Order ${executedOrder.orderId} ${executedOrder.status}`);
+    logger.debug(`[MatchingEngine] Order ${executedOrder.orderId} ${executedOrder.status}`);
 
     this.saveState();
 
@@ -371,13 +373,7 @@ export class MatchingEngine {
       };
     }
 
-    const knownQuoteAssets = ['USDT', 'BUSD', 'USDC', 'BTC', 'ETH', 'BNB'];
-    const quoteAsset = knownQuoteAssets.find((asset) => order.symbol.endsWith(asset)) || 'USDT';
-
-    return {
-      baseAsset: order.symbol.slice(0, -quoteAsset.length),
-      quoteAsset,
-    };
+    return resolveSymbolAssets(order.symbol);
   }
 
   /**
@@ -428,7 +424,7 @@ export class MatchingEngine {
       }
 
       if (triggered) {
-        console.log(`[MatchingEngine] Stop order ${order.orderId} triggered at ${currentPrice}`);
+        logger.debug(`[MatchingEngine] Stop order ${order.orderId} triggered at ${currentPrice}`);
         
         // 转换为市价单或限价单执行
         let executedOrder: Order;
@@ -475,7 +471,7 @@ export class MatchingEngine {
 
       // 如果发生了成交或状态变化（executeLimitOrder 在未成交时返回原对象）
       if (updatedOrder !== order) {
-        console.log(`[MatchingEngine] Limit order ${order.orderId} matched via checkLimitOrders`);
+        logger.debug(`[MatchingEngine] Limit order ${order.orderId} matched via checkLimitOrders`);
         
         // 识别新产生的成交记录
         const newFills = updatedOrder.fills.slice(initialFillsCount);

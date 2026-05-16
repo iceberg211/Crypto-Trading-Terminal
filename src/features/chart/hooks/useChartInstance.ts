@@ -10,7 +10,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useAtomValue } from 'jotai';
-import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { useChartCore } from './useChartCore';
 import { useChartData } from './useChartData';
 import { useChartScroll } from './useChartScroll';

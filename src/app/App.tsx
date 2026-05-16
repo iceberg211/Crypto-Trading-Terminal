@@ -3,12 +3,13 @@ import { Provider } from 'jotai';
 import { TradingLayout } from '@/components/layout/TradingLayout';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { exchangeInfo } from '@/core/config';
+import { logger } from '@/utils/logger';
 
 function App() {
   // 应用启动时初始化 ExchangeInfo
   useEffect(() => {
     exchangeInfo.initialize().then(() => {
-      console.log('[App] ExchangeInfo initialized:', exchangeInfo.getStatus());
+      logger.debug('[App] ExchangeInfo initialized:', exchangeInfo.getStatus());
     });
   }, []);
 

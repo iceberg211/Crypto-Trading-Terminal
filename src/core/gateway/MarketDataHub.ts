@@ -11,7 +11,8 @@
 import { WebSocketManager } from '@/core/gateway/WebSocketManager';
 import { SubscriptionManager } from './SubscriptionManager';
 import { runtimeConfig } from '@/core/config/runtime';
-import type { 
+import { logger } from '@/utils/logger';
+import type {
   DataChannel, 
   StreamConfig, 
   MessageHandler, 
@@ -59,21 +60,21 @@ export class MarketDataHub {
     this.ws.subscribe((data: any) => {
       this.handleMessage(data);
     });
-    
+
     // 使用 WSManager 的事件化状态监听，避免轮询延迟和噪音
     this.unsubscribeWsStatus = this.ws.onStatusChange((status) => {
       const wasConnected = this.isConnected;
       this.isConnected = status === 'connected';
 
       if (!wasConnected && this.isConnected) {
-        console.log('[MarketDataHub] WebSocket connected, resubscribing all streams...');
+        logger.debug('[MarketDataHub] WebSocket connected, resubscribing all streams...');
         this.resubscribeAll();
         this.notifyStatusChange('connected');
         return;
       }
 
       if (wasConnected && !this.isConnected) {
-        console.log('[MarketDataHub] WebSocket disconnected');
+        logger.debug('[MarketDataHub] WebSocket disconnected');
         this.notifyStatusChange(status as HubStatus);
       } else if (!this.isConnected) {
         // also broadcast intermediate statuses (connecting/reconnecting/disconnected)
@@ -106,9 +107,9 @@ export class MarketDataHub {
     // 首次订阅时发送 SUBSCRIBE 消息
     if (refCount === 1) {
       this.sendSubscribe(streamName);
-      console.log(`[MarketDataHub] Subscribed: ${streamName}`);
+      logger.debug(`[MarketDataHub] Subscribed: ${streamName}`);
     } else {
-      console.log(`[MarketDataHub] Reused subscription: ${streamName} (ref: ${refCount})`);
+      logger.debug(`[MarketDataHub] Reused subscription: ${streamName} (ref: ${refCount})`);
     }
     
     // 返回取消订阅函数
@@ -118,9 +119,9 @@ export class MarketDataHub {
       // 引用计数归零时发送 UNSUBSCRIBE
       if (newRefCount === 0) {
         this.sendUnsubscribe(streamName);
-        console.log(`[MarketDataHub] Unsubscribed: ${streamName}`);
+        logger.debug(`[MarketDataHub] Unsubscribed: ${streamName}`);
       } else {
-        console.log(`[MarketDataHub] Reduced ref: ${streamName} (ref: ${newRefCount})`);
+        logger.debug(`[MarketDataHub] Reduced ref: ${streamName} (ref: ${newRefCount})`);
       }
     };
   }
@@ -176,7 +177,7 @@ export class MarketDataHub {
       try {
         handler(status);
       } catch (err) {
-        console.error('[MarketDataHub] Status change handler error:', err);
+        logger.error('[MarketDataHub] Status change handler error:', err);
       }
     }
   }
@@ -272,13 +273,13 @@ export class MarketDataHub {
             stream = `${symbol}@ticker`;
             break;
           default:
-            console.warn('[MarketDataHub] Unknown event type:', eventType);
+            logger.warn('[MarketDataHub] Unknown event type:', eventType);
             return;
         }
-        
+
         payload = parsed;
       } else {
-        console.warn('[MarketDataHub] Invalid message format:', parsed);
+        logger.warn('[MarketDataHub] Invalid message format:', parsed);
         return;
       }
       
@@ -290,7 +291,7 @@ export class MarketDataHub {
       this.dispatchMessage(channelType, payload);
       
     } catch (error) {
-      console.error('[MarketDataHub] Failed to handle message:', error);
+      logger.error('[MarketDataHub] Failed to handle message:', error);
     }
   }
   
@@ -309,7 +310,7 @@ export class MarketDataHub {
         try {
           handler(data);
         } catch (error) {
-          console.error(`[MarketDataHub] Handler error for ${key}:`, error);
+          logger.error(`[MarketDataHub] Handler error for ${key}:`, error);
         }
       });
     }
@@ -318,7 +319,7 @@ export class MarketDataHub {
   private resubscribeAll() {
     const activeStreams = this.subscriptionManager.getActiveStreams();
     
-    console.log(`[MarketDataHub] Resubscribing ${activeStreams.length} streams...`);
+    logger.debug(`[MarketDataHub] Resubscribing ${activeStreams.length} streams...`);
     
     activeStreams.forEach((streamName: string) => {
       this.sendSubscribe(streamName);

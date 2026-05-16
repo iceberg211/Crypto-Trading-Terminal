@@ -6,6 +6,7 @@
 
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { TimeScaleSync } from './TimeScaleSync';
+import { logger } from '@/utils/logger';
 
 export type SubchartType = 'MACD' | 'RSI' | 'VOL' | null;
 
@@ -81,7 +82,7 @@ export class ChartGroup {
    */
   addSubchart(id: string, type: SubchartType, chart: IChartApi): SubchartSlot | null {
     if (this.state.subcharts.length >= MAX_SUBCHARTS) {
-      console.warn(`Maximum ${MAX_SUBCHARTS} subcharts allowed`);
+      logger.warn(`Maximum ${MAX_SUBCHARTS} subcharts allowed`);
       return null;
     }
 

@@ -12,7 +12,7 @@ import { createChart, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { useAtomValue } from 'jotai';
 import { klineDataAtom } from '../atoms/klineAtom';
 import { indicatorCacheAtom } from '../atoms/indicatorAtom';
-import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { TimeScaleSync } from '../core/TimeScaleSync';
 import { CHART_OPTIONS, SERIES_OPTIONS, CHART_COLORS } from '../constants/chartConfig';
 import { toChartCandle, toLinePoint, toVolumeData } from '../utils/chartTransformers';

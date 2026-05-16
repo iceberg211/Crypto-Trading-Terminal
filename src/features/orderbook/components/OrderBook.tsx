@@ -3,7 +3,7 @@ import { FixedSizeList as List } from 'react-window';
 import { useAtomValue } from 'jotai';
 import { useOrderBook } from '../hooks/useOrderBook';
 import { DepthChart } from './DepthChart';
-import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { aggregateOrders } from '../utils/orderAggregate';
 import { OrderBookTooltip } from './OrderBookTooltip';
 import { ConnectionStatus } from '@/components/ui/ConnectionStatus';

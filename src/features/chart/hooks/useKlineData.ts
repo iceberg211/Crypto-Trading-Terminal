@@ -10,6 +10,7 @@ import {
 } from '../atoms/klineAtom';
 import { binanceApi } from '@/core/api/binance';
 import { marketDataHub } from '@/core/gateway';
+import { logger } from '@/utils/logger';
 import type { BinanceKlineWsMessage, Candle } from '@/types/binance';
 
 const MAX_KLINES = 3000;
@@ -128,7 +129,7 @@ export function useKlineData() {
       if (latestSymbolRef.current !== symbol || latestIntervalRef.current !== interval) return 0;
       
       if (olderCandles.length === 0) {
-        console.log('[useKlineData] No more historical data available');
+        logger.debug('[useKlineData] No more historical data available');
         setHasMore(false);
         return 0;
       }
@@ -140,7 +141,7 @@ export function useKlineData() {
         
         if (newCandles.length === 0) return prev;
         
-        console.log(`[useKlineData] Loaded ${newCandles.length} more candles`);
+        logger.debug(`[useKlineData] Loaded ${newCandles.length} more candles`);
         return trimKlines([...newCandles, ...prev]);
       });
       
@@ -153,7 +154,7 @@ export function useKlineData() {
       if (requestId === loadMoreRequestIdRef.current) {
         setError(`加载更多失败：${formatKlineError(err)}`);
       }
-      console.error('[useKlineData] Failed to load more data:', err);
+      logger.warn('[useKlineData] Failed to load more data:', err);
       return 0;
     } finally {
       if (requestId === loadMoreRequestIdRef.current) {
@@ -287,12 +288,12 @@ export function useKlineData() {
             // 按时间排序
             const merged = Array.from(timeMap.values()).sort((a, b) => a.time - b.time);
             
-            console.log(`[useKlineData] 断线补齐: 原 ${prev.length} 根, 补齐后 ${merged.length} 根`);
+            logger.debug(`[useKlineData] 断线补齐: 原 ${prev.length} 根, 补齐后 ${merged.length} 根`);
             return trimKlines(merged);
           });
         })
         .catch((err) => {
-          console.error('[useKlineData] 断线补齐失败:', err);
+          logger.warn('[useKlineData] 断线补齐失败:', err);
         });
     }
   }, [wsStatus, symbol, interval, klineData.length, setKlineData]);

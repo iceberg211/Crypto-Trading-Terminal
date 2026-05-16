@@ -5,7 +5,8 @@
 
 import Decimal from 'decimal.js';
 import { exchangeInfo, type SymbolConfig } from '@/core/config';
-import type { 
+import { logger } from '@/utils/logger';
+import type {
   NewOrderRequest, 
   ValidationResult, 
   RejectReason,
@@ -161,7 +162,7 @@ export class OrderValidator {
       
       // 偏离超过 50% 给出警告（但不阻止）
       if (deviation.gt(0.5)) {
-        console.warn(`[OrderValidator] Price deviation > 50%: ${price} vs current ${current}`);
+        logger.warn(`[OrderValidator] Price deviation > 50%: ${price} vs current ${current}`);
       }
     }
   }
@@ -193,7 +194,7 @@ export class OrderValidator {
     if (notional.lt(minNotional)) {
       errors.push({
         field: 'notional',
-        message: `交易金额不能小于 ${config.minNotional} USDT`,
+        message: `交易金额不能小于 ${config.minNotional} ${config.quoteAsset}`,
         reason: 'MIN_NOTIONAL',
       });
     }
@@ -214,7 +215,7 @@ export class OrderValidator {
     let requiredAmount: Decimal;
 
     if (request.side === 'BUY') {
-      // 买入：需要报价资产（如 USDT）
+      // 买入：需要报价资产
       if (request.type === 'MARKET') {
         // 市价买入：使用当前价格估算
         if (!currentPrice) return;
@@ -225,7 +226,7 @@ export class OrderValidator {
         requiredAmount = qty.times(new Decimal(request.price));
       }
     } else {
-      // 卖出：需要基础资产（如 BTC）
+      // 卖出：需要基础资产
       requiredAmount = qty;
     }
 

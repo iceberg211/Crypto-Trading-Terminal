@@ -1,3 +1,5 @@
+import { logger } from '@/utils/logger';
+
 /**
  * SubscriptionManager - 订阅引用计数管理
  * 
@@ -29,9 +31,9 @@ export class SubscriptionManager {
    */
   removeSubscription(streamName: string): number {
     const currentCount = this.subscriptions.get(streamName) || 0;
-    
+
     if (currentCount <= 0) {
-      console.warn(`[SubscriptionManager] Attempt to remove non-existent subscription: ${streamName}`);
+      logger.warn(`[SubscriptionManager] Attempt to remove non-existent subscription: ${streamName}`);
       return 0;
     }
     

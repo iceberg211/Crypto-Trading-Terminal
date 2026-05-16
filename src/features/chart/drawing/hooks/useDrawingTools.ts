@@ -8,6 +8,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { IChartApi, MouseEventParams } from 'lightweight-charts';
 import type { DrawingManager } from '../core/DrawingManager';
 import type { DrawingTool, DrawingPoint } from '../core/types';
+import { logger } from '@/utils/logger';
 
 interface UseDrawingToolsOptions {
   chartRef: React.MutableRefObject<IChartApi | null>;
@@ -48,7 +49,7 @@ export function useDrawingTools({
       : Math.floor(new Date(param.time as string).getTime() / 1000);
 
     const point: DrawingPoint = { time, price };
-    console.log('[useDrawingTools] Click at:', point);
+    logger.debug('[useDrawingTools] Click at:', point);
 
     if (activeTool === 'horizontal') {
       manager.addHorizontalLine(price);
@@ -58,7 +59,7 @@ export function useDrawingTools({
       if (!pendingPointRef.current) {
         // 第一个点
         setPendingPoint(point);
-        console.log('[useDrawingTools] First point set');
+        logger.debug('[useDrawingTools] First point set');
       } else {
         // 第二个点 - 完成绘制
         if (activeTool === 'trendline') {
@@ -83,7 +84,7 @@ export function useDrawingTools({
       return;
     }
 
-    console.log('[useDrawingTools] Subscribing for tool:', activeTool);
+    logger.debug('[useDrawingTools] Subscribing for tool:', activeTool);
     chart.subscribeClick(handleClick);
 
     return () => {
@@ -95,7 +96,7 @@ export function useDrawingTools({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && activeTool) {
-        console.log('[useDrawingTools] Cancelled via ESC');
+        logger.debug('[useDrawingTools] Cancelled via ESC');
         setPendingPoint(null);
         setActiveTool(null);
       }
@@ -109,7 +110,7 @@ export function useDrawingTools({
   const selectTool = useCallback((tool: DrawingTool) => {
     setPendingPoint(null);
     setActiveTool(tool);
-    console.log('[useDrawingTools] Tool selected:', tool);
+    logger.debug('[useDrawingTools] Tool selected:', tool);
   }, []);
 
   // 取消当前绘制

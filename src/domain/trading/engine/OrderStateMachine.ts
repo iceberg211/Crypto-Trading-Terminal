@@ -3,13 +3,14 @@
  * 管理订单在生命周期中的状态转换
  */
 
-import type { 
-  Order, 
-  OrderStatus, 
-  OrderEvent, 
+import type {
+  Order,
+  OrderStatus,
+  OrderEvent,
   StateTransition,
   OrderFill,
 } from '../types';
+import { logger } from '@/utils/logger';
 
 /**
  * 有效的状态转换表
@@ -81,9 +82,9 @@ export class OrderStateMachine {
    */
   static transition(order: Order, event: OrderEvent, payload?: TransitionPayload): Order {
     const nextState = this.getNextState(order.status, event);
-    
+
     if (!nextState) {
-      console.warn(`[OrderStateMachine] Invalid transition: ${order.status} + ${event}`);
+      logger.warn(`[OrderStateMachine] Invalid transition: ${order.status} + ${event}`);
       return order;
     }
 
@@ -111,7 +112,7 @@ export class OrderStateMachine {
       }
     }
 
-    console.log(`[OrderStateMachine] ${order.status} -> ${nextState} (${event})`);
+    logger.debug(`[OrderStateMachine] ${order.status} -> ${nextState} (${event})`);
     return updatedOrder;
   }
 

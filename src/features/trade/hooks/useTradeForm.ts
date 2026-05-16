@@ -8,8 +8,9 @@ import {
   OrderType,
 } from '../atoms/tradeAtom';
 import { orderBookAtom } from '@/features/orderbook/atoms/orderBookAtom';
-import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { useTradingService } from '@/domain/trading';
+import { logger } from '@/utils/logger';
 
 interface OrderResult {
   success: boolean;
@@ -30,17 +31,7 @@ export function useTradeForm() {
   
   const { pricePrecision, quantityPrecision, baseAsset, quoteAsset } = symbolConfig;
 
-  // 从 tradingService 获取余额
-  const balance = {
-    [quoteAsset]: tradingService.availableBalances[quoteAsset] || '0',
-    [baseAsset]: tradingService.availableBalances[baseAsset] || '0',
-    // 兼容旧的接口
-    USDT: tradingService.availableBalances['USDT'] || '0',
-    BTC: tradingService.availableBalances['BTC'] || '0',
-    ETH: tradingService.availableBalances['ETH'] || '0',
-    BNB: tradingService.availableBalances['BNB'] || '0',
-    SOL: tradingService.availableBalances['SOL'] || '0',
-  };
+  const balance = tradingService.availableBalances;
 
   // 获取当前最优价格
   const getBestPrice = useCallback((side: OrderSide): string => {
@@ -191,7 +182,7 @@ export function useTradeForm() {
         });
       }
     } catch (error) {
-      console.error('Order creation failed:', error);
+      logger.error('Order creation failed:', error);
       setLastResult({
         success: false,
         message: error instanceof Error ? error.message : '订单提交失败',

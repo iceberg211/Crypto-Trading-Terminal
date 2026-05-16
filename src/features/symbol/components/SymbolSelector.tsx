@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAtom } from 'jotai';
-import { symbolConfigAtom, POPULAR_SYMBOLS, SymbolConfig } from '@/features/symbol/atoms/symbolAtom';
+import { symbolConfigAtom, POPULAR_SYMBOLS, SymbolConfig } from '@/domain/symbol';
 import { Card } from '@/components/ui';
 
 export function SymbolSelector() {

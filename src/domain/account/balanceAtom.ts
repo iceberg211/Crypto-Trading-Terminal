@@ -6,18 +6,10 @@
 import { atom } from 'jotai';
 import Decimal from 'decimal.js';
 import type { AssetBalance, AccountInfo } from './types';
+import { createInitialAccount, getInitialAccount, persistAccount } from './accountStorage';
+import { logger } from '@/utils/logger';
 
 export type { AssetBalance, AccountInfo };
-
-// ==================== 初始余额 ====================
-
-const INITIAL_BALANCES: Record<string, AssetBalance> = {
-  USDT: { asset: 'USDT', free: '10000', locked: '0' },
-  BTC: { asset: 'BTC', free: '0.5', locked: '0' },
-  ETH: { asset: 'ETH', free: '5', locked: '0' },
-  BNB: { asset: 'BNB', free: '10', locked: '0' },
-  SOL: { asset: 'SOL', free: '50', locked: '0' },
-};
 
 // ==================== Atoms ====================
 
@@ -25,8 +17,7 @@ const INITIAL_BALANCES: Record<string, AssetBalance> = {
  * 账户信息 Atom
  */
 export const accountAtom = atom<AccountInfo>({
-  balances: INITIAL_BALANCES,
-  updateTime: Date.now(),
+  ...getInitialAccount(),
 });
 
 /**
@@ -98,9 +89,9 @@ export const lockBalanceAtom = atom(
     const { asset, amount } = payload;
     const account = get(accountAtom);
     const balance = account.balances[asset];
-    
+
     if (!balance) {
-      console.error(`[Balance] Asset ${asset} not found`);
+      logger.warn(`[Balance] Asset ${asset} not found`);
       return false;
     }
 
@@ -108,7 +99,7 @@ export const lockBalanceAtom = atom(
     const lockAmount = new Decimal(amount);
 
     if (lockAmount.gt(free)) {
-      console.error(`[Balance] Insufficient ${asset}: need ${amount}, have ${balance.free}`);
+      logger.warn(`[Balance] Insufficient ${asset}: need ${amount}, have ${balance.free}`);
       return false;
     }
 
@@ -118,12 +109,15 @@ export const lockBalanceAtom = atom(
       locked: new Decimal(balance.locked).plus(lockAmount).toFixed(8),
     };
 
-    set(accountAtom, {
+    const nextAccount = {
       balances: { ...account.balances, [asset]: newBalance },
       updateTime: Date.now(),
-    });
+    };
 
-    console.log(`[Balance] Locked ${amount} ${asset}`);
+    set(accountAtom, nextAccount);
+    persistAccount(nextAccount);
+
+    logger.debug(`[Balance] Locked ${amount} ${asset}`);
     return true;
   }
 );
@@ -149,12 +143,15 @@ export const unlockBalanceAtom = atom(
       locked: locked.minus(unlockAmount).toFixed(8),
     };
 
-    set(accountAtom, {
+    const nextAccount = {
       balances: { ...account.balances, [asset]: newBalance },
       updateTime: Date.now(),
-    });
+    };
 
-    console.log(`[Balance] Unlocked ${unlockAmount.toFixed(8)} ${asset}`);
+    set(accountAtom, nextAccount);
+    persistAccount(nextAccount);
+
+    logger.debug(`[Balance] Unlocked ${unlockAmount.toFixed(8)} ${asset}`);
   }
 );
 
@@ -227,12 +224,15 @@ export const executeTradeAtom = atom(
       }
     }
 
-    set(accountAtom, {
+    const nextAccount = {
       balances: newBalances,
       updateTime: Date.now(),
-    });
+    };
 
-    console.log(`[Balance] Trade executed: ${side} ${baseAmount} ${baseAsset} @ ${quoteAmount} ${quoteAsset}`);
+    set(accountAtom, nextAccount);
+    persistAccount(nextAccount);
+
+    logger.debug(`[Balance] Trade executed: ${side} ${baseAmount} ${baseAsset} @ ${quoteAmount} ${quoteAsset}`);
   }
 );
 
@@ -242,11 +242,10 @@ export const executeTradeAtom = atom(
 export const resetAccountAtom = atom(
   null,
   (_get, set) => {
-    set(accountAtom, {
-      balances: INITIAL_BALANCES,
-      updateTime: Date.now(),
-    });
-    console.log('[Balance] Account reset to initial state');
+    const nextAccount = createInitialAccount();
+    set(accountAtom, nextAccount);
+    persistAccount(nextAccount);
+    logger.debug('[Balance] Account reset to initial state');
   }
 );
 
@@ -266,11 +265,14 @@ export const depositAtom = atom(
       locked: balance.locked,
     };
 
-    set(accountAtom, {
+    const nextAccount = {
       balances: { ...account.balances, [asset]: newBalance },
       updateTime: Date.now(),
-    });
+    };
 
-    console.log(`[Balance] Deposited ${amount} ${asset}`);
+    set(accountAtom, nextAccount);
+    persistAccount(nextAccount);
+
+    logger.debug(`[Balance] Deposited ${amount} ${asset}`);
   }
 );

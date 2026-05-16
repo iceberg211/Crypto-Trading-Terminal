@@ -1,3 +1,5 @@
+import { logger } from '@/utils/logger';
+
 type WebSocketStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
 interface WebSocketManagerOptions {
@@ -42,7 +44,7 @@ export class WebSocketManager {
 
     this.manuallyClosed = false;
     this.setStatus('connecting');
-    console.log('WebSocket 连接中...', this.url);
+    logger.debug('WebSocket 连接中...', this.url);
 
     try {
       this.ws = new WebSocket(this.url);
@@ -52,7 +54,7 @@ export class WebSocketManager {
       this.ws.onerror = this.handleError.bind(this);
       this.ws.onclose = this.handleClose.bind(this);
     } catch (error) {
-      console.error('WebSocket 连接失败:', error);
+      logger.error('WebSocket 连接失败:', error);
       this.scheduleReconnect();
     }
   }
@@ -104,7 +106,7 @@ export class WebSocketManager {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
-      console.warn('WebSocket 未连接，无法发送消息');
+      logger.warn('WebSocket 未连接，无法发送消息');
     }
   }
 
@@ -133,13 +135,13 @@ export class WebSocketManager {
       try {
         h(next);
       } catch (e) {
-        console.error('[WebSocketManager] status handler error', e);
+        logger.error('[WebSocketManager] status handler error', e);
       }
     });
   }
 
   private handleOpen(): void {
-    console.log('WebSocket 已连接');
+    logger.debug('WebSocket 已连接');
     this.setStatus('connected');
     this.reconnectAttempts = 0;
     this.startHeartbeat();
@@ -154,16 +156,16 @@ export class WebSocketManager {
         handler(data);
       });
     } catch (error) {
-      console.error('解析 WebSocket 消息失败:', error);
+      logger.error('解析 WebSocket 消息失败:', error);
     }
   }
 
   private handleError(error: Event): void {
-    console.error('WebSocket 错误:', error);
+    logger.error('WebSocket 错误:', error);
   }
 
   private handleClose(): void {
-    console.log('WebSocket 已断开');
+    logger.debug('WebSocket 已断开');
     this.setStatus('disconnected');
 
     if (this.heartbeatTimer) {
@@ -181,7 +183,7 @@ export class WebSocketManager {
     // 但我们可以用心跳检测连接状态
     this.heartbeatTimer = window.setInterval(() => {
       if (this.ws?.readyState !== WebSocket.OPEN) {
-        console.warn('心跳检测失败，尝试重连');
+        logger.warn('心跳检测失败，尝试重连');
         this.disconnect({ manual: false });
         this.scheduleReconnect();
       }
@@ -190,14 +192,14 @@ export class WebSocketManager {
 
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('达到最大重连次数，放弃重连');
+      logger.error('达到最大重连次数，放弃重连');
       return;
     }
 
     this.setStatus('reconnecting');
     this.reconnectAttempts++;
 
-    console.log(
+    logger.debug(
       `计划重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
     );
 

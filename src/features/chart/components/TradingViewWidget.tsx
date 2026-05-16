@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { KlineInterval } from '@/types/binance';
 import { toTradingViewInterval, toTradingViewSymbol } from '../utils/tradingview';
+import { logger } from '@/utils/logger';
 
 const TV_SCRIPT_SRC = 'https://s3.tradingview.com/tv.js';
 
@@ -69,7 +70,7 @@ export function TradingViewWidget({
           withdateranges: false,
         });
       } catch (error) {
-        console.error('[TradingViewWidget] 初始化失败:', error);
+        logger.error('[TradingViewWidget] 初始化失败:', error);
       }
     }
 

@@ -6,9 +6,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
 import Decimal from 'decimal.js';
-import { orderBookAtom } from '@/features/orderbook/atoms/orderBookAtom';
-import { symbolConfigAtom } from '@/features/symbol/atoms/symbolAtom';
-import { tickerAtom } from '@/features/ticker/atoms/tickerAtom';
+import { orderBookAtom, tickerAtom } from '@/domain/market';
+import { symbolConfigAtom } from '@/domain/symbol';
 import { matchingEngine } from '@/domain/trading/engine';
 import {
   lockBalanceAtom,
@@ -26,6 +25,7 @@ import {
 } from '@/domain/exchange';
 import { checkRiskAtom } from '@/domain/risk';
 import { buildRiskContext, formatRiskDecisionMessage, toRiskRejectedResponse } from '../service/orderPreflight';
+import { logger } from '@/utils/logger';
 import type { NewOrderRequest, Order, OrderResponse, OrderSide, OrderType } from '@/domain/trading/types';
 import type { LifecycleStage } from '@/domain/exchange';
 
@@ -107,7 +107,7 @@ export function useTradingService(): TradingServiceReturn {
     try {
       appendLedgerJournal(journal);
     } catch (error) {
-      console.error('[TradingService] Ledger journal rejected:', error);
+      logger.error('[TradingService] Ledger journal rejected:', error);
     }
   }, [appendLedgerJournal]);
 
