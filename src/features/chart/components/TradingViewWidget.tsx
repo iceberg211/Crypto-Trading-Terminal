@@ -52,7 +52,6 @@ export function TradingViewWidget({
 
         containerRef.current.innerHTML = '';
 
-        // eslint-disable-next-line no-new
         new window.TradingView!.widget({
           autosize: true,
           container_id: containerId,

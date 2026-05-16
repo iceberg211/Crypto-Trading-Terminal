@@ -4,7 +4,7 @@
  * 渲染单个副图插槽
  */
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, CSSProperties } from 'react';
 import type { SubchartType } from '../hooks/useSubchartSlots';
 
 interface SubchartPanelProps {
@@ -12,11 +12,20 @@ interface SubchartPanelProps {
   type: SubchartType;
   onSetContainer: (slotId: string, container: HTMLDivElement | null) => void;
   onRemove: (slotId: string) => void;
+  height?: string;
+  className?: string;
+  style?: CSSProperties;
 }
 
-const SUBCHART_HEIGHT = 120;
-
-export function SubchartPanel({ slotId, type, onSetContainer, onRemove }: SubchartPanelProps) {
+export function SubchartPanel({
+  slotId,
+  type,
+  onSetContainer,
+  onRemove,
+  height,
+  className = '',
+  style,
+}: SubchartPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // 当 type 存在且 container 准备好时注册
@@ -42,7 +51,7 @@ export function SubchartPanel({ slotId, type, onSetContainer, onRemove }: Subcha
   if (!type) return null;
 
   return (
-    <div className="border-t border-line-dark">
+    <div className={`border-t border-line-dark flex flex-col min-h-0 ${className}`} style={style}>
       <div className="flex items-center justify-between px-3 py-1 bg-bg-panel/70">
         <span className="text-text-primary text-[11px] font-semibold tracking-wide">{type}</span>
         <button
@@ -53,7 +62,11 @@ export function SubchartPanel({ slotId, type, onSetContainer, onRemove }: Subcha
           关闭
         </button>
       </div>
-      <div ref={containerRef} style={{ height: SUBCHART_HEIGHT }} />
+      <div
+        ref={containerRef}
+        className="flex-1 min-h-0"
+        style={height ? { height } : undefined}
+      />
     </div>
   );
 }

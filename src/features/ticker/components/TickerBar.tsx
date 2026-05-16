@@ -49,7 +49,7 @@ export function TickerBar() {
     <div className="relative z-40 flex items-center bg-bg-card border-b border-line-dark">
 
       {/* Symbol Selector - 独立容器，不受 overflow 影响 */}
-      <div className="flex items-center gap-2 shrink-0 px-3 h-12">
+      <div className="flex items-center gap-2 shrink-0 px-2 sm:px-3 h-12">
 
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-[10px] font-bold text-white">
           {baseAsset.charAt(0)}
@@ -62,55 +62,59 @@ export function TickerBar() {
 
 
       {/* 可滚动区域：价格和统计数据 */}
-      <div className="flex items-center gap-4 lg:gap-6 px-3 h-12 overflow-x-auto">
+      <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain">
+        <div className="flex items-center min-w-max gap-3 sm:gap-4 lg:gap-6 px-2 sm:px-3 h-12">
 
         {/* Last Price with Flash Animation */}
-        <div className="shrink-0">
-          <div className="font-heading text-xl lg:text-2xl font-bold font-mono tracking-tight tabular-nums">
-
-            <PriceFlash
-              price={lastPrice}
-              precision={pricePrecision}
-              className={isPositive ? 'text-up' : 'text-down'}
-            />
+          <div className="shrink-0 min-w-[128px] sm:min-w-[160px]">
+            <div className="font-heading text-lg sm:text-xl lg:text-2xl font-bold font-mono tracking-tight tabular-nums whitespace-nowrap">
+              <PriceFlash
+                price={lastPrice}
+                precision={pricePrecision}
+                className={isPositive ? 'text-up' : 'text-down'}
+              />
+            </div>
+            <div className="text-xxs text-text-tertiary whitespace-nowrap">
+              ≈ ${lastPrice ? formatPrice(lastPrice, pricePrecision) : '--'}
+            </div>
           </div>
-          <div className="text-xxs text-text-tertiary">
-            ≈ ${lastPrice ? formatPrice(lastPrice, pricePrecision) : '--'}
-          </div>
-        </div>
 
         {/* 24h Stats */}
-        <div className="flex items-center gap-4 lg:gap-6 text-xxs shrink-0">
+          <div className="flex items-center gap-3 sm:gap-4 lg:gap-6 text-xxs shrink-0">
 
-          <div>
-            <span className="text-text-tertiary block text-xxs">24h 涨跌</span>
-            <span className={`font-mono font-medium tabular-nums ${isPositive ? 'text-up' : 'text-down'}`}>
-              {isPositive ? '+' : ''}{priceChangePercent.toFixed(2)}%
-            </span>
-          </div>
-          <div className="hidden sm:block">
-            <span className="text-text-tertiary block text-xxs">24h 最高</span>
-            <span className="text-text-primary font-mono tabular-nums">
-              {ticker?.highPrice ? formatPrice(ticker.highPrice, pricePrecision) : '--'}
-            </span>
-          </div>
-          <div className="hidden sm:block">
-            <span className="text-text-tertiary block text-xxs">24h 最低</span>
-            <span className="text-text-primary font-mono tabular-nums">
-              {ticker?.lowPrice ? formatPrice(ticker.lowPrice, pricePrecision) : '--'}
-            </span>
-          </div>
-          <div className="hidden md:block">
-            <span className="text-text-tertiary block text-xxs">24h 成交量({baseAsset})</span>
-            <span className="text-text-primary font-mono tabular-nums">
-              {ticker?.volume ? formatLargeNumber(ticker.volume) : '--'}
-            </span>
-          </div>
-          <div className="hidden lg:block">
-            <span className="text-text-tertiary block text-xxs">24h 成交额({quoteAsset})</span>
-            <span className="text-text-primary font-mono tabular-nums">
-              {ticker?.quoteVolume ? formatLargeNumber(ticker.quoteVolume) : '--'}
-            </span>
+            <div className="min-w-[72px] sm:min-w-[84px]">
+              <span className="text-text-tertiary block text-xxs whitespace-nowrap">
+                <span className="sm:hidden">涨跌</span>
+                <span className="hidden sm:inline">24h 涨跌</span>
+              </span>
+              <span className={`font-mono font-medium tabular-nums whitespace-nowrap ${isPositive ? 'text-up' : 'text-down'}`}>
+                {isPositive ? '+' : ''}{priceChangePercent.toFixed(2)}%
+              </span>
+            </div>
+            <div className="hidden sm:block min-w-[96px]">
+              <span className="text-text-tertiary block text-xxs whitespace-nowrap">24h 最高</span>
+              <span className="text-text-primary font-mono tabular-nums whitespace-nowrap">
+                {ticker?.highPrice ? formatPrice(ticker.highPrice, pricePrecision) : '--'}
+              </span>
+            </div>
+            <div className="hidden sm:block min-w-[96px]">
+              <span className="text-text-tertiary block text-xxs whitespace-nowrap">24h 最低</span>
+              <span className="text-text-primary font-mono tabular-nums whitespace-nowrap">
+                {ticker?.lowPrice ? formatPrice(ticker.lowPrice, pricePrecision) : '--'}
+              </span>
+            </div>
+            <div className="hidden md:block min-w-[120px]">
+              <span className="text-text-tertiary block text-xxs whitespace-nowrap">24h 成交量({baseAsset})</span>
+              <span className="text-text-primary font-mono tabular-nums whitespace-nowrap">
+                {ticker?.volume ? formatLargeNumber(ticker.volume) : '--'}
+              </span>
+            </div>
+            <div className="hidden lg:block min-w-[132px]">
+              <span className="text-text-tertiary block text-xxs whitespace-nowrap">24h 成交额({quoteAsset})</span>
+              <span className="text-text-primary font-mono tabular-nums whitespace-nowrap">
+                {ticker?.quoteVolume ? formatLargeNumber(ticker.quoteVolume) : '--'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
